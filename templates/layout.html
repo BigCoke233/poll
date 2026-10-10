@@ -1,0 +1,117 @@
+{{define "layout"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{.Title}} · nobloat/poll</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/theme.css{{with .Theme}}?theme={{.}}{{end}}" data-theme-css>
+<script type="module" src="/static/app.js"></script>
+</head>
+<body>
+<header class="top">
+  {{with .Home}}<a class="home" href="{{.}}">{{end}}{{logo}}{{if .Home}}</a>{{end}}
+</header>
+<main>
+{{template "content" .}}
+</main>
+<footer class="foot">
+  {{t .Lang "footer.by"}} <a href="https://spiessknafl.at/peter" rel="noopener">cinemast</a> ·
+  <a href="https://zeitkapsl.eu" rel="noopener">zeitkapsl.eu</a> ·
+  <a href="https://hardcode.at" rel="noopener">hardcode.at</a> ·
+  <a href="https://nobloat.org" rel="noopener">nobloat.org</a>
+</footer>
+</body>
+</html>{{end}}
+
+{{define "notice"}}
+<div class="feedback" role="status" aria-live="polite">
+  {{- if .Error}}<p class="error">{{t .Lang .Error}}</p>{{end -}}
+  {{- if .Notice}}<p class="notice">{{t .Lang (print "notice." .Notice)}}</p>{{end -}}
+</div>
+{{end}}
+
+
+
+{{define "results"}}
+<ol class="results">
+{{range .Results}}
+  <li class="{{if and $.Poll.Closed (eq $.Poll.Outcome .Index)}}chosen{{end}}{{if .Lead}} lead{{end}}">
+    <div class="result-head"><span>{{.Option.Text}}</span><span class="count">{{len .Names}}</span></div>
+    <meter min="0" max="{{.Max}}" value="{{len .Names}}" aria-hidden="true"></meter>
+    {{if .Names}}<ul class="names">{{range .Names}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  </li>
+{{end}}
+</ol>
+{{end}}
+
+{{define "pollhead"}}
+<header class="poll-head">
+  <hgroup>
+    <h1>{{.Poll.Title}}</h1>
+    {{if .Poll.Description}}<p class="description">{{.Poll.Description}}</p>{{end}}
+  </hgroup>
+  {{if .Poll.Closed}}
+  <section class="stamp" aria-labelledby="outcome-h">
+    <h2 id="outcome-h">{{t .Lang "outcome.title"}}</h2>
+    <p class="outcome-option">{{.Poll.OutcomeOption.Text}}</p>
+  </section>
+  {{end}}
+</header>
+{{end}}
+
+{{define "options"}}
+<label>{{t .Lang "new.options"}}<textarea id="options" name="options" data-key="o" rows="7" required placeholder="{{t .Lang "new.options.placeholder"}}">{{.Form.Get "options"}}</textarea></label>
+<p class="hint">{{t .Lang "new.options.hint"}}</p>
+{{end}}
+
+{{define "pollform"}}
+{{if .Poll}}<auto-save {{template "autosave-attrs" .}}>{{end}}
+{{if .Public}}<pow-form difficulty="{{.Difficulty}}" working="{{t .Lang "pow.working"}}">{{end}}
+<form method="post" action="{{.Action}}" class="card">
+  <label>{{t .Lang "new.title.label"}}<input id="title" name="title" data-key="t" required maxlength="200" value="{{.Form.Get "title"}}"></label>
+  <label>{{t .Lang "new.description"}}<textarea name="description" data-key="d" rows="3" maxlength="5000">{{.Form.Get "description"}}</textarea></label>
+  {{if and .Poll (or .Poll.Answers .Poll.Closed)}}
+  <div class="locked">
+    <p class="hint">{{t .Lang "admin.locked"}}</p>
+    <ol class="option-list readonly">{{range $i, $o := .Poll.Options}}<li><span class="num">{{printf "%02d" (inc $i)}}</span><span>{{$o.Text}}</span></li>{{end}}</ol>
+  </div>
+  {{else}}
+  {{template "options" .}}
+  <fieldset class="inline" data-key="m">
+    <legend>{{t .Lang "new.mode"}}</legend>
+    <label><input type="radio" name="mode" value="multiple"{{if ne (.Form.Get "mode") "single"}} checked{{end}}> {{t .Lang "new.mode.multiple"}}</label>
+    <label><input type="radio" name="mode" value="single"{{if eq (.Form.Get "mode") "single"}} checked{{end}}> {{t .Lang "new.mode.single"}}</label>
+  </fieldset>
+  {{end}}
+  <label>{{t .Lang "new.theme"}}
+    <select name="theme" data-theme-picker data-key="h">
+      {{range .Themes}}<option value="{{.}}"{{if eq ($.Form.Get "theme") .}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label class="check"><input type="checkbox" name="results" value="1" data-key="v"{{if eq (.Form.Get "results") "1"}} checked{{end}}> {{t .Lang "new.results"}}</label>
+  {{if .Public}}
+  <fieldset>
+    <legend>{{t .Lang "new.creator"}}</legend>
+    <div class="fields">
+      <label>{{t .Lang "poll.name"}}<input name="name" data-key="n" required maxlength="100" autocomplete="name" value="{{.Form.Get "name"}}"></label>
+      <label>{{t .Lang "poll.email"}}<input name="email" type="email" data-key="e" required maxlength="254" autocomplete="email" value="{{.Form.Get "email"}}"></label>
+    </div>
+    <p class="hint">{{t .Lang "new.creator.hint"}}</p>
+  </fieldset>
+  <input type="hidden" name="pow" value="{{.Challenge}}">
+  <input type="hidden" name="nonce" value="">
+  <noscript><p class="error">{{t .Lang "poll.nojs"}}</p></noscript>
+  {{end}}
+  <div class="actions">
+    <button type="submit" data-key="s"{{if .Poll}} data-autosave-hide{{end}}>{{t .Lang .Button}}</button>
+    <p class="autosave" data-autosave-status role="status" aria-live="polite"></p>
+  </div>
+  {{if .Public}}<p class="pow-status" role="status" aria-live="polite"></p>{{end}}
+</form>
+{{if .Public}}</pow-form>{{end}}
+{{if .Poll}}</auto-save>{{end}}
+{{end}}
+
+{{define "autosave-attrs"}}saving="{{t .Lang "autosave.saving"}}" saved="{{t .Lang "autosave.saved"}}" failed="{{t .Lang "autosave.failed"}}"{{end}}

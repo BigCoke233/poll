@@ -1,0 +1,763 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"html"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"net/mail"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+type testEnv struct {
+	t       *testing.T
+	srv     *server
+	ts      *httptest.Server
+	dataDir string
+	mu      sync.Mutex
+	now     time.Time
+	mails   []Mail
+}
+
+func newEnv(t *testing.T, opts ...func(*config)) *testEnv {
+	t.Helper()
+	loc, _ := time.LoadLocation("Europe/Vienna")
+	e := &testEnv{t: t, now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC), dataDir: t.TempDir()}
+	cfg := config{DataDir: e.dataDir, BaseURL: "https://poll.example", AdminPassword: "secret", AdminEmail: "admin@example.com", Loc: loc}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	s, err := newServer(cfg, e.clock, e.record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.srv = s
+	e.ts = httptest.NewServer(s.handler())
+	t.Cleanup(e.ts.Close)
+	return e
+}
+
+func (e *testEnv) clock() time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.now
+}
+
+func (e *testEnv) record(m Mail) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.mails = append(e.mails, m)
+	return nil
+}
+
+func (e *testEnv) mailCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.mails)
+}
+
+func (e *testEnv) mailsTo(addr string) []Mail {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var ms []Mail
+	for _, m := range e.mails {
+		if m.To == addr {
+			ms = append(ms, m)
+		}
+	}
+	return ms
+}
+
+var linkRe = regexp.MustCompile(`/p/[a-z0-9-]+/a/[A-Z2-7]+`)
+
+func (e *testEnv) linkPath(addr string) string {
+	e.t.Helper()
+	ms := e.mailsTo(addr)
+	if len(ms) == 0 {
+		e.t.Fatalf("no mail to %s", addr)
+	}
+	l := linkRe.FindString(ms[len(ms)-1].Text)
+	if l == "" {
+		e.t.Fatalf("no link in mail: %s", ms[len(ms)-1].Text)
+	}
+	return l
+}
+
+type resp struct {
+	status int
+	body   string
+	header http.Header
+}
+
+func (e *testEnv) do(method, path string, form url.Values, admin bool, hdr ...string) resp {
+	e.t.Helper()
+	var body io.Reader
+	if form != nil {
+		body = strings.NewReader(form.Encode())
+	}
+	req, _ := http.NewRequest(method, e.ts.URL+path, body)
+	if form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if admin {
+		req.SetBasicAuth("admin", "secret")
+	}
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
+	}
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	res, err := c.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	return resp{res.StatusCode, string(b), res.Header}
+}
+
+func (e *testEnv) get(path string) resp                     { return e.do("GET", path, nil, false) }
+func (e *testEnv) post(path string, f url.Values) resp      { return e.do("POST", path, f, false) }
+func (e *testEnv) adminGet(path string) resp                { return e.do("GET", path, nil, true) }
+func (e *testEnv) adminPost(path string, f url.Values) resp { return e.do("POST", path, f, true) }
+
+func (e *testEnv) createPoll(slug, options string, multiple, visible bool) {
+	e.t.Helper()
+	f := url.Values{"title": {"Team Dinner Ü"}, "description": {"Let's eat"}, "options": {options}}
+	if !multiple {
+		f.Set("mode", "single")
+	}
+	if visible {
+		f.Set("results", "1")
+	}
+	n := e.mailCount()
+	r := e.adminPost("/a/new", f)
+	if r.status != http.StatusSeeOther {
+		e.t.Fatalf("create poll: %d %s", r.status, r.body)
+	}
+	id := createdID(r)
+
+	if e.poll(id).OwnerToken != "" || e.mailCount() != n {
+		e.t.Fatal("admin-created polls have no owner and send no mail")
+	}
+	e.mu.Lock()
+	e.mails = nil
+	e.mu.Unlock()
+	e.rename(id, slug)
+}
+
+func createdID(r resp) string {
+	return strings.Split(strings.TrimPrefix(r.header.Get("Location"), "/a"), "/")[2]
+}
+
+func (e *testEnv) rename(id, slug string) {
+	e.t.Helper()
+	p := e.poll(id)
+	p.Slug = slug
+	if err := e.srv.store.create(p, "test"); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.srv.store.delete(id, "test"); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *testEnv) submit(slug, name, email string, choices ...int) resp {
+	e.t.Helper()
+	f := url.Values{"name": {name}, "email": {email}, "pow": {e.srv.pow.issue()}, "nonce": {"0"}}
+	for _, c := range choices {
+		f.Add("choice", strconv.Itoa(c))
+	}
+	return e.follow(e.post("/p/"+slug, f))
+}
+
+func (e *testEnv) follow(r resp) resp {
+	if r.status == http.StatusSeeOther {
+		return e.get(r.header.Get("Location"))
+	}
+	return r
+}
+
+func (e *testEnv) answer(slug, name, email string, choices ...int) string {
+	e.t.Helper()
+	if r := e.submit(slug, name, email, choices...); r.status != 200 {
+		e.t.Fatalf("submit: %d %s", r.status, r.body)
+	}
+	return e.linkPath(email)
+}
+
+func (e *testEnv) poll(slug string) *Poll {
+	e.t.Helper()
+	p, err := e.srv.store.get(slug)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return p
+}
+
+const opts = "Mo, 12.10.2026, 14:00–15:30\nDi, 13.10.2026\nPizza"
+
+func TestResultsVisibility(t *testing.T) {
+	for _, visible := range []bool{false, true} {
+		e := newEnv(t)
+		e.createPoll("dinner", opts, false, visible)
+		la := e.answer("dinner", "Anna", "anna@example.com", 0)
+		e.answer("dinner", "Bertram", "bertram@example.com", 1)
+
+		if r := e.get("/p/dinner"); strings.Contains(r.body, "Bertram") != visible || strings.Contains(r.body, "@example.com") {
+			t.Fatalf("public page: visible=%v but responses shown=%v (emails never)", visible, !visible)
+		}
+		check := func() {
+			r := e.get(la)
+			if !strings.Contains(r.body, "Anna") {
+				t.Fatal("participant page misses own response")
+			}
+			if strings.Contains(r.body, "Bertram") != visible {
+				t.Fatalf("visible=%v but other response shown=%v", visible, !visible)
+			}
+			if strings.Contains(r.body, "@example.com") {
+				t.Fatal("participant page shows emails")
+			}
+		}
+		check()
+		e.adminPost("/a/p/dinner/close", url.Values{"option": {"1"}})
+		check()
+		if r := e.adminGet("/a/p/dinner"); !strings.Contains(r.body, "Bertram") || !strings.Contains(r.body, "bertram@example.com") {
+			t.Fatal("admin doesn't see everything")
+		}
+	}
+}
+
+func TestSecurity(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, false)
+	r := e.do("POST", "/a/new", url.Values{"title": {"T"}, "options": {"A"}}, true, "Sec-Fetch-Site", "cross-site")
+	if r.status != 403 {
+		t.Fatalf("cross-site POST: %d", r.status)
+	}
+	if r := e.do("POST", "/a/new", url.Values{"title": {"T"}, "options": {"A"}}, true, "Origin", "https://evil.example"); r.status != 403 {
+		t.Fatalf("cross-origin POST: %d", r.status)
+	}
+	if _, err := e.srv.store.get("evil"); err != errNotFound {
+		t.Fatal("cross-origin request created a poll")
+	}
+	for _, p := range []string{"/p/dinner", "/a", "/nope", "/static/app.css", "/theme.css"} {
+		h := e.get(p).header
+		if !strings.Contains(h.Get("Content-Security-Policy"), "default-src 'self'") || !strings.Contains(h.Get("Content-Security-Policy"), "frame-ancestors 'none'") ||
+			h.Get("X-Content-Type-Options") != "nosniff" || h.Get("Referrer-Policy") != "no-referrer" {
+			t.Fatalf("%s: missing security headers: %v", p, h)
+		}
+	}
+	big := url.Values{"name": {strings.Repeat("x", 100<<10)}}
+	if r := e.post("/p/dinner", big); r.status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body: %d", r.status)
+	}
+	if r := e.submit("dinner", strings.Repeat("x", 101), "a@example.com", 0); r.status != 400 {
+		t.Fatalf("long name: %d", r.status)
+	}
+}
+
+func TestPowSubmit(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, false)
+	e.srv.pow.difficulty = 8
+	ch := e.srv.pow.issue()
+	nonce := solveForTest(ch, 8)
+	f := url.Values{"name": {"A"}, "email": {"a@example.com"}, "choice": {"0"}, "pow": {ch}, "nonce": {nonce}}
+	if r := e.post("/p/dinner", f); r.status != 303 {
+		t.Fatalf("valid pow: %d", r.status)
+	}
+	f.Set("email", "b@example.com")
+	if r := e.post("/p/dinner", f); r.status != 400 || !strings.Contains(r.body, T("en", "err.pow")) {
+		t.Fatalf("replayed pow: %d", r.status)
+	}
+}
+
+func TestMailFormat(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, false)
+	e.do("POST", "/p/dinner", url.Values{"name": {"Jörg"}, "email": {"j@example.com"}, "choice": {"0"}, "pow": {e.srv.pow.issue()}, "nonce": {"0"}}, false, "Accept-Language", "de-AT,de;q=0.9,en;q=0.5")
+	m := e.mailsTo("j@example.com")[0]
+	if m.Subject != T("de", "mail.link.subject", "Team Dinner Ü") || !strings.Contains(m.Text, "Hallo Jörg") {
+		t.Fatalf("participant language not used: %q", m.Subject)
+	}
+	if a := e.mailsTo("admin@example.com"); !strings.HasPrefix(a[0].Subject, "New answer") {
+		t.Fatalf("admin mail not in en: %q", a[0].Subject)
+	}
+	if a := e.mailsTo("admin@example.com")[0]; !strings.Contains(a.Text, "Pizza") || !strings.Contains(a.Text, "01 Mo, 12.10.2026, 14:00–15:30  [1] ■") || !strings.Contains(a.Text, "Jörg") {
+		t.Fatalf("admin mail lacks the full results:\n%s", a.Text)
+	}
+	e.adminPost("/a/p/dinner/close", url.Values{"option": {"0"}})
+	ms := e.mailsTo("j@example.com")
+	closed := ms[len(ms)-1]
+	raw, err := buildMessage("poll@example.com", closed, e.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	subj, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	if err != nil || subj != "Ergebnis: Team Dinner Ü" {
+		t.Fatalf("subject round trip: %q %v", subj, err)
+	}
+	mt, params, _ := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if mt != "multipart/mixed" {
+		t.Fatalf("top: %s", mt)
+	}
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	text, _ := mr.NextPart()
+	body, _ := io.ReadAll(text)
+	if pt, _, _ := mime.ParseMediaType(text.Header.Get("Content-Type")); pt != "text/plain" || !strings.Contains(string(body), "Jörg") {
+		t.Fatalf("text part: %s %s", pt, body)
+	}
+	ics, err := mr.NextPart()
+	if err != nil || !strings.HasPrefix(ics.Header.Get("Content-Type"), "text/calendar") {
+		t.Fatalf("ics part: %v", err)
+	}
+}
+
+func TestTemplatesRender(t *testing.T) {
+	e := newEnv(t)
+	o := parseOption("Mo, 12.10.2026, 14:00–15:30", time.UTC, time.Now())
+	a := &Answer{Token: "TOKEN", Name: "Anna", Email: "a@example.com", Choices: []int{0}}
+	p := &Poll{Slug: "s", Title: "T", Description: "D", Options: []Option{o, {Text: "B"}}, Answers: []*Answer{a, {Name: "P"}}, Closed: true, ResultsVisible: true}
+	for lang := range messages {
+		for name, tpl := range e.srv.pages {
+			for _, closed := range []bool{false, true} {
+				for _, multiple := range []bool{false, true} {
+					p.Closed, p.Multiple = closed, multiple
+					pg := &page{Lang: lang, Title: "T", Poll: p, Polls: []*Poll{p}, Answer: a, Results: results(p),
+						Error: "err.name", Notice: "saved", Form: url.Values{"choice": {"0"}}, Challenge: "c", Text: "remove.text", Action: "/x", Button: "remove.button", Base: "/a/p/s", Public: true, Link: "/y", LinkText: "sent.link"}
+					var buf bytes.Buffer
+					if err := tpl.ExecuteTemplate(&buf, "layout", pg); err != nil {
+						t.Fatalf("%s/%s: %v", lang, name, err)
+					}
+					if strings.Contains(buf.String(), "!missing:") {
+						t.Fatalf("%s/%s: missing translation: %s", lang, name, regexp.MustCompile(`!missing:\S+`).FindString(buf.String()))
+					}
+				}
+			}
+		}
+		for _, name := range []string{"link", "admin", "closed", "manage"} {
+			for _, ev := range []string{"new", "changed", "removed"} {
+				d := mailData{Lang: lang, Poll: p, Answer: a, Public: "https://x/p/s", Link: "https://x", Event: ev, Choices: []string{"A"}, Results: results(p)}
+				var buf bytes.Buffer
+				if err := e.srv.mailText.ExecuteTemplate(&buf, name+".txt", d); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(buf.String(), "!missing:") {
+					t.Fatalf("%s/%s mail: missing translation", lang, name)
+				}
+			}
+		}
+	}
+}
+
+func TestI18nKeysMatch(t *testing.T) {
+	for lang, m := range messages {
+		for k := range messages["en"] {
+			if _, ok := m[k]; !ok {
+				t.Errorf("%s misses %q", lang, k)
+			}
+		}
+		for k := range m {
+			if _, ok := messages["en"][k]; !ok {
+				t.Errorf("en misses %q (from %s)", k, lang)
+			}
+		}
+	}
+	if len(messages) < 2 {
+		t.Fatal("expected at least en and de")
+	}
+}
+
+func TestSeedPolls(t *testing.T) {
+	e := newEnv(t)
+	files, _ := filepath.Glob("seed/*.json")
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		os.WriteFile(filepath.Join(e.dataDir, "polls", filepath.Base(f)), b, 0o600)
+	}
+	polls, err := e.srv.store.list()
+	if err != nil || len(polls) != 4 {
+		t.Fatalf("seed: %v %d", err, len(polls))
+	}
+	for _, p := range polls {
+		if p.Closed || len(p.Answers) == 0 || p.Theme == "" {
+			t.Fatalf("%s: seed polls must be open, answered and themed", p.Slug)
+		}
+	}
+	if r := e.adminGet("/a/p/pizza-friday"); r.status != 200 || !strings.Contains(r.body, "Rubber Duck") {
+		t.Fatal("seed poll not rendered")
+	}
+	if r := e.get("/p/pizza-friday/a/" + e.poll("pizza-friday").Answers[0].Token); r.status != 200 || !strings.Contains(r.body, "Grace Hopper") {
+		t.Fatal("seed participant page")
+	}
+}
+
+func TestResultsSortedByCount(t *testing.T) {
+	p := &Poll{Options: []Option{{Text: "A"}, {Text: "B"}, {Text: "C"}}, Answers: []*Answer{
+		{Name: "x", Choices: []int{1, 2}}, {Name: "y", Choices: []int{2}}, {Name: "z", Choices: []int{1}},
+	}}
+	rs := results(p)
+	var got []string
+	for _, r := range rs {
+		got = append(got, fmt.Sprintf("%s%d%v", r.Option.Text, len(r.Names), r.Lead))
+	}
+	if strings.Join(got, " ") != "B2true C2true A0false" {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestPublicCreation(t *testing.T) {
+	off := newEnv(t)
+	if r := off.get("/new"); r.status != 404 {
+		t.Fatalf("/new without PUBLIC_CREATE: %d", r.status)
+	}
+	e := newEnv(t, func(c *config) { c.PublicCreate = true })
+	if r := e.get("/p/lunch"); !strings.Contains(r.body, `class="home" href="/"`) {
+		t.Fatal("with a start page, the logo links to it")
+	}
+	if r := e.get("/"); r.status != 200 || !strings.Contains(r.body, `href="/new"`) || !strings.Contains(r.body, T("en", "home.pick.title")) {
+		t.Fatal("root should be the start page explaining nobloat/poll, linking to /new")
+	}
+	if r := off.get("/"); r.header.Get("Location") != "/a" {
+		t.Fatal("without PUBLIC_CREATE the root leads to /a")
+	}
+	if r := e.get("/new"); r.status != 200 || !strings.Contains(r.body, `name="pow"`) || strings.Contains(r.body, `href="/a"`) {
+		t.Fatalf("public form: %d", r.status)
+	}
+	f := url.Values{"title": {"Lunch"}, "options": {"Pho\nRamen"}, "name": {"Olga"}, "email": {"Olga@Example.org"}, "nonce": {"0"}}
+	if r := e.post("/new", f); r.status != 400 || !strings.Contains(r.body, T("en", "err.pow")) {
+		t.Fatalf("missing PoW: %d", r.status)
+	}
+	f.Set("pow", e.srv.pow.issue())
+	r := e.post("/new", f)
+	if r.status != 303 {
+		t.Fatalf("create: %d %s", r.status, r.body)
+	}
+	id := createdID(r)
+	if !validSlug(id) || len(id) != 16 {
+		t.Fatalf("poll ID %q", id)
+	}
+	e.rename(id, "lunch")
+	p := e.poll("lunch")
+	if p.OwnerName != "Olga" || p.OwnerEmail != "olga@example.org" || r.header.Get("Location") != "/p/"+id+"/m/"+p.OwnerToken+"/created" {
+		t.Fatalf("create: %d %s", r.status, r.header.Get("Location"))
+	}
+	manage := "/p/lunch/m/" + p.OwnerToken
+	if r := e.get(manage + "/created"); r.status != 200 || !strings.Contains(r.body, `href="`+manage+`"`) || !strings.Contains(r.body, T("en", "created.link")) {
+		t.Fatal("created page must link to the manage page")
+	}
+	if ms := e.mailsTo("olga@example.org"); len(ms) != 1 || !strings.Contains(ms[0].Text, "https://poll.example/p/"+id+"/m/"+p.OwnerToken) || !strings.Contains(ms[0].Text, "https://poll.example/p/"+id+"\n") {
+		t.Fatal("creator didn't get the manage link")
+	}
+
+	if r := e.get(manage); r.status != 200 || !strings.Contains(r.body, manage+"/edit") || strings.Contains(r.body, "/a/p/") {
+		t.Fatalf("manage page: %d", r.status)
+	}
+	for _, bad := range []string{"/p/lunch/m/WRONG", "/p/lunch/m/WRONG/edit"} {
+		if r := e.get(bad); r.status != 404 && r.status != 405 {
+			t.Fatalf("%s: %d", bad, r.status)
+		}
+	}
+	e.createPoll("other", opts, false, false)
+	if r := e.get("/p/other/m/" + p.OwnerToken); r.status != 404 {
+		t.Fatal("a creator token must only work on its own poll")
+	}
+	if r := e.post(manage+"/edit", url.Values{"title": {"Lunch!"}, "options": {"Pho\nRamen\nBánh mì"}}); r.status != 303 || e.poll("lunch").Title != "Lunch!" || len(e.poll("lunch").Options) != 3 {
+		t.Fatalf("creator edit: %d", r.status)
+	}
+
+	admin, olga := len(e.mailsTo("admin@example.com")), len(e.mailsTo("olga@example.org"))
+	e.answer("lunch", "Anna", "anna@example.com", 2)
+	if len(e.mailsTo("admin@example.com")) != admin || len(e.mailsTo("olga@example.org")) != olga+1 {
+		t.Fatal("vote notification must go to the creator")
+	}
+
+	if r := e.adminGet("/a"); !strings.Contains(r.body, "olga@example.org") {
+		t.Fatal("admin overview misses the creator")
+	}
+	if r := e.adminGet("/a/p/lunch"); r.status != 200 || !strings.Contains(r.body, "/a/p/lunch/edit") {
+		t.Fatal("admin manage page")
+	}
+
+	if r := e.post(manage+"/close", url.Values{"option": {"2"}}); r.status != 303 || !e.poll("lunch").Closed {
+		t.Fatalf("creator close: %d", r.status)
+	}
+	if r := e.post(manage+"/delete", url.Values{}); r.status != 200 {
+		t.Fatalf("creator delete: %d", r.status)
+	}
+	if r := e.get(manage); r.status != 404 {
+		t.Fatal("manage link survives deletion")
+	}
+}
+
+func TestStorage(t *testing.T) {
+
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "polls"), 0o700)
+	tmp := filepath.Join(dir, "polls", ".tmp-123")
+	os.WriteFile(tmp, []byte("x"), 0o600)
+	if _, err := openStore(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatal("tmp file not removed")
+	}
+
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, false)
+	path := filepath.Join(e.dataDir, "polls", "dinner.json")
+
+	fi, _ := os.Stat(path)
+	di, _ := os.Stat(filepath.Dir(path))
+	var p Poll
+	b, _ := os.ReadFile(path)
+	if fi.Mode().Perm() != 0o600 || di.Mode().Perm() != 0o700 || json.Unmarshal(b, &p) != nil || p.Options[0].Start.IsZero() || !p.Options[1].AllDay {
+		t.Fatalf("perms %v %v or dates %+v", fi.Mode().Perm(), di.Mode().Perm(), p.Options)
+	}
+
+	var wg sync.WaitGroup
+	for i := range 30 {
+		wg.Go(func() { e.submit("dinner", "P", fmt.Sprintf("p%d@example.com", i), i%3) })
+	}
+	wg.Wait()
+	if n := len(e.poll("dinner").Answers); n != 30 {
+		t.Fatalf("want 30 answers, got %d", n)
+	}
+}
+
+func TestAnswering(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, true, false)
+	e.createPoll("other", opts, false, false)
+
+	r := e.submit("dinner", "Anna", " Anna@Example.com ", 1)
+	l := e.linkPath("anna@example.com")
+	if !strings.Contains(r.body, `href="`+l+`"`) || len(e.mailsTo("anna@example.com")) != 1 || len(e.mailsTo("admin@example.com")) != 1 {
+		t.Fatalf("submit: %d", r.status)
+	}
+	if c := results(e.poll("dinner")); c[0].Index != 1 || len(c[0].Names) != 1 {
+		t.Fatal("answer must count without any confirmation")
+	}
+
+	n := e.mailCount()
+	r = e.submit("dinner", "Mallory", "anna@example.com", 2)
+	if p := e.poll("dinner"); e.mailCount() != n || len(p.Answers) != 1 || p.Answers[0].Name != "Anna" || strings.Contains(r.body, "/a/") || !strings.Contains(r.body, html.EscapeString(T("en", "dup.title"))) {
+		t.Fatal("duplicate submission changed something or leaked the link")
+	}
+
+	token := l[strings.LastIndex(l, "/")+1:]
+	if e.get(l).status != 200 || e.get("/p/other/a/"+token).status != 404 || !strings.Contains(e.adminGet("/a/p/dinner").body, l) {
+		t.Fatal("participant link")
+	}
+
+	if r := e.post(l+"/update", url.Values{"choice": {"0", "2"}}); r.status != 303 || !strings.Contains(e.follow(r).body, T("en", "notice.saved")) {
+		t.Fatalf("update: %d", r.status)
+	}
+	if c := e.poll("dinner").Answers[0].Choices; len(c) != 2 || c[0] != 0 || c[1] != 2 {
+		t.Fatalf("choices: %v", c)
+	}
+	if e.post(l+"/update", url.Values{"choice": {"7"}}).status != 400 {
+		t.Fatal("invalid choice accepted")
+	}
+
+	if r := e.do("POST", l+"/update", url.Values{"choice": {"1"}}, false, "X-Autosave", "1"); r.status != 204 || e.poll("dinner").Answers[0].Choices[0] != 1 {
+		t.Fatalf("autosave: %d", r.status)
+	}
+	if r := e.do("POST", l+"/update", url.Values{}, false, "X-Autosave", "1"); r.status != 400 || !strings.Contains(r.body, T("en", "err.choice")) || strings.Contains(r.body, "<html") {
+		t.Fatalf("autosave error: %d %q", r.status, r.body)
+	}
+
+	if e.get(l+"/remove").status != 200 || len(e.poll("dinner").Answers) != 1 {
+		t.Fatal("GET remove must only show a confirmation")
+	}
+	if r := e.post(l+"/remove", url.Values{}); r.header.Get("Location") != "/p/dinner/removed" || !strings.Contains(e.follow(r).body, T("en", "removed.text")) {
+		t.Fatalf("remove: %d", r.status)
+	}
+	if ms := e.mailsTo("admin@example.com"); e.get(l).status != 404 || !strings.Contains(ms[len(ms)-1].Subject, "removed") {
+		t.Fatal("removed link still works or admin not notified")
+	}
+
+	l2 := e.answer("dinner", "Ben", "ben@example.com", 1)
+	e.adminPost("/a/p/dinner/remove", url.Values{"token": {e.poll("dinner").Answers[0].Token}})
+	if e.get(l2).status != 404 {
+		t.Fatal("admin-removed link still works")
+	}
+}
+
+func TestAnsweringWithoutEmail(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, true, false)
+	r := e.submit("dinner", "Anna", "", 1)
+	e.submit("dinner", "Ben", "  ", 2)
+	if p := e.poll("dinner"); len(p.Answers) != 2 || !strings.Contains(r.body, html.EscapeString(T("en", "sent.text.nomail"))) || !strings.Contains(r.body, "/p/dinner/a/"+p.Answers[0].Token) {
+		t.Fatal("answers without email must count, never as duplicates, and show the personal link")
+	}
+	if e.mailCount() != 2 || len(e.mailsTo("admin@example.com")) != 2 || !strings.Contains(e.mailsTo("admin@example.com")[0].Text, "–") {
+		t.Fatal("only the admin gets mail")
+	}
+	e.adminPost("/a/p/dinner/close", url.Values{"option": {"1"}})
+	if !e.poll("dinner").Closed || e.mailCount() != 2 {
+		t.Fatal("closing must not mail participants without email")
+	}
+}
+
+func TestClose(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts+"\nParty am 24.10. um 19.30 Uhr", true, false)
+
+	e.srv.store.update("dinner", "test", func(p *Poll) error { p.Options[3] = Option{Text: p.Options[3].Text}; return nil })
+	l := e.answer("dinner", "Anna", "anna@example.com", 0, 3)
+	e.answer("dinner", "Ben", "ben@example.com", 2)
+	before := e.mailCount()
+	if e.adminGet("/a/p/dinner/close?option=0").status != 200 || e.poll("dinner").Closed || e.mailCount() != before {
+		t.Fatal("GET close must only show a confirmation")
+	}
+	e.adminPost("/a/p/dinner/close", url.Values{"option": {"0"}})
+
+	for _, addr := range []string{"anna@example.com", "ben@example.com"} {
+		ms := e.mailsTo(addr)
+		if m := ms[len(ms)-1]; !bytes.Contains(m.ICS, []byte("DTSTART:20261012T120000Z")) {
+			t.Fatalf("missing/wrong ICS: %s", m.ICS)
+		}
+	}
+	if e.mailCount() != before+2 {
+		t.Fatalf("want 2 close mails, got %d", e.mailCount()-before)
+	}
+
+	if e.submit("dinner", "Late", "late@example.com", 0).status != 409 || e.post(l+"/update", url.Values{"choice": {"1"}}).status != 409 || e.post(l+"/remove", url.Values{}).status != 409 {
+		t.Fatal("closed poll must reject answering, changing and removing")
+	}
+	if pub := e.get("/p/dinner").body; !strings.Contains(pub, "Mo, 12.10.2026, 14:00–15:30") || strings.Contains(pub, `name="email"`) || !strings.Contains(e.get(l).body, T("en", "outcome.title")) {
+		t.Fatal("outcome not shown or form still there")
+	}
+
+	if r := e.adminGet("/a/p/dinner"); !strings.Contains(r.body, "/a/p/dinner/reopen") {
+		t.Fatal("re-open button missing")
+	}
+	mails := e.mailCount()
+	if r := e.adminPost("/a/p/dinner/reopen", nil); r.header.Get("Location") != "/a/p/dinner?ok=reopened" || e.poll("dinner").Closed || e.mailCount() != mails {
+		t.Fatalf("reopen: %d %s", r.status, r.header.Get("Location"))
+	}
+	if e.submit("dinner", "Late", "late@example.com", 0).status != 200 || strings.Contains(e.adminGet("/a/p/dinner").body, "/reopen") {
+		t.Fatal("a re-opened poll takes answers and has no re-open button")
+	}
+	if e.adminPost("/a/p/dinner/close", url.Values{"option": {"1"}}); !e.poll("dinner").Closed || e.poll("dinner").Outcome != 1 {
+		t.Fatal("close after re-open")
+	}
+
+	for _, c := range []struct {
+		option, dtstart string
+	}{{"2", ""}, {"3", "DTSTART:20261024T173000Z"}} {
+		e := newEnv(t)
+		e.createPoll("x", opts+"\nParty am 24.10. um 19.30 Uhr", true, false)
+		e.srv.store.update("x", "test", func(p *Poll) error { p.Options[3] = Option{Text: p.Options[3].Text}; return nil })
+		e.answer("x", "Anna", "anna@example.com", 2, 3)
+		e.adminPost("/a/p/x/close", url.Values{"option": {c.option}})
+		ms := e.mailsTo("anna@example.com")
+		if m := ms[len(ms)-1]; (c.dtstart == "") != (m.ICS == nil) || !bytes.Contains(m.ICS, []byte(c.dtstart)) {
+			t.Fatalf("option %s: ICS %s", c.option, m.ICS)
+		}
+	}
+}
+
+func TestAdmin(t *testing.T) {
+	e := newEnv(t)
+	for _, p := range []string{"/a", "/a/new", "/a/p/x"} {
+		if e.get(p).status != 401 {
+			t.Fatalf("%s without auth", p)
+		}
+	}
+	if e.do("GET", "/a", nil, false, "Authorization", "Basic YWRtaW46d3Jvbmc=").status != 401 {
+		t.Fatal("wrong password accepted")
+	}
+	e.createPoll("dinner", opts, false, false)
+	if r := e.adminGet("/a"); !strings.Contains(r.body, "/a/p/dinner") {
+		t.Fatal("index misses poll")
+	}
+	if !strings.Contains(e.adminGet("/a/p/dinner").body, `class="home" href="/a"`) || strings.Contains(e.get("/p/dinner").body, `class="home"`) {
+		t.Fatal("logo links to the dashboard on admin pages (no start page here)")
+	}
+
+	r := e.adminGet("/a/p/dinner")
+	for _, want := range []string{`value="Team Dinner Ü"`, "Pizza</textarea>", `value="single" checked`} {
+		if !strings.Contains(r.body, want) {
+			t.Fatalf("edit form misses %q", want)
+		}
+	}
+
+	r = e.adminPost("/a/p/dinner/edit", url.Values{"title": {""}, "description": {"kept"}, "options": {"A"}})
+	if r.status != 400 || !strings.Contains(r.body, ">kept</textarea>") || e.poll("dinner").Title != "Team Dinner Ü" {
+		t.Fatalf("invalid edit: %d", r.status)
+	}
+
+	e.adminPost("/a/p/dinner/edit", url.Values{"title": {"New"}, "options": {"A\nB"}, "mode": {"multiple"}, "results": {"1"}})
+	if p := e.poll("dinner"); p.Title != "New" || len(p.Options) != 2 || !p.Multiple || !p.ResultsVisible {
+		t.Fatal("edit failed")
+	}
+	if r := e.do("POST", "/a/p/dinner/edit", url.Values{"title": {""}}, true, "X-Autosave", "1"); r.status != 400 || strings.TrimSpace(r.body) != T("en", "err.title") {
+		t.Fatalf("autosave error: %d %q", r.status, r.body)
+	}
+
+	l := e.answer("dinner", "Anna", "anna@example.com", 0)
+	if e.adminPost("/a/p/dinner/edit", url.Values{"title": {"New"}, "options": {"X\nY\nZ"}}).status != 409 || len(e.poll("dinner").Options) != 2 {
+		t.Fatal("options changed despite an answer")
+	}
+	if r := e.do("POST", "/a/p/dinner/edit", url.Values{"title": {"Renamed"}}, true, "X-Autosave", "1"); r.status != 204 || e.poll("dinner").Title != "Renamed" || e.poll("dinner").ResultsVisible {
+		t.Fatalf("autosave: %d", r.status)
+	}
+
+	if e.adminGet("/a/p/dinner/delete").status != 200 || e.adminPost("/a/p/dinner/delete", url.Values{}).status != 303 {
+		t.Fatal("delete")
+	}
+	if _, err := e.srv.store.get("dinner"); err != errNotFound || e.get(l).status != 404 || e.adminPost("/a/p/dinner/delete", url.Values{}).status != 404 {
+		t.Fatal("poll or participant link survives deletion")
+	}
+}
+
+func TestThemes(t *testing.T) {
+	if got := strings.Join(themeNames(), ","); got != "business,elegant,fun,minimal" {
+		t.Fatalf("built-in themes: %s", got)
+	}
+
+	e := newEnv(t, func(c *config) { c.Theme = "fun" })
+	if css := e.get("/theme.css").body; !strings.Contains(css, "#16a34a") {
+		t.Fatal("theme.css must be the instance theme")
+	}
+
+	e = newEnv(t)
+	if !strings.Contains(e.get("/p/x").body, `<svg xmlns="http://www.w3.org/2000/svg" class="logo"`) {
+		t.Fatal("the logo must be inlined")
+	}
+
+	if r := e.adminGet("/a/new?theme=fun"); !strings.Contains(r.body, `href="/theme.css?theme=fun"`) || !strings.Contains(r.body, `<option value="fun" selected>`) {
+		t.Fatal("preview")
+	}
+	if r := e.adminGet("/a/new").body; !strings.Contains(r, `<option value="minimal" selected>`) || !strings.Contains(r, `value="multiple" checked`) {
+		t.Fatal("the instance theme must be preselected")
+	}
+	e.rename(createdID(e.adminPost("/a/new", url.Values{"title": {"T"}, "options": {"A"}, "theme": {"fun"}})), "t")
+	if e.poll("t").Theme != "fun" || !strings.Contains(e.get("/p/t").body, `href="/theme.css?theme=fun"`) || !strings.Contains(e.adminGet("/a/p/t").body, "theme=fun") {
+		t.Fatal("poll theme not stored or not used")
+	}
+	e.adminPost("/a/p/t/edit", url.Values{"title": {"T"}, "theme": {"bogus"}})
+	if e.poll("t").Theme != "" {
+		t.Fatal("unknown theme must fall back to the default")
+	}
+}

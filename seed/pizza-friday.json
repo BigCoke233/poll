@@ -1,0 +1,23 @@
+{
+  "slug": "pizza-friday",
+  "title": "Pizza Friday",
+  "description": "The most important decision of the week.\nPineapple discussions will be moderated.",
+  "multiple": true,
+  "resultsVisible": true,
+  "options": [
+    {"text": "Margherita (the classic)"},
+    {"text": "Diavola (for the brave)"},
+    {"text": "Quattro Formaggi (all of them)"},
+    {"text": "Hawaii (we need to talk)"}
+  ],
+  "answers": [
+    {"token": "H3DKISIPOMEX4H4373PJKU2FTC", "name": "Ada Lovelace", "email": "ada@example.org", "lang": "en", "choices": [0, 2], "created": "2026-10-09T00:50:43.090942897+02:00"},
+    {"token": "TAKSEU54P73M7ES6GWUZTHTO6M", "name": "Linus", "email": "linus@example.org", "lang": "en", "choices": [1], "created": "2026-10-09T00:50:43.090942897+02:00"},
+    {"token": "GNWRG4TMCWUQA24A3RSS5DYLKP", "name": "Grace Hopper", "email": "grace@example.org", "lang": "en", "choices": [0, 1, 2], "created": "2026-10-09T00:50:43.090942897+02:00"},
+    {"token": "WOU552VNKLJGUOIUBB5EEC7OTM", "name": "Rubber Duck", "email": "duck@example.org", "lang": "en", "choices": [3], "created": "2026-10-09T00:50:43.090942897+02:00"}
+  ],
+  "closed": false,
+  "outcome": 0,
+  "created": "2026-10-08T18:50:43.090942897+02:00",
+  "theme": "minimal"
+}

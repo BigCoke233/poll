@@ -1,0 +1,21 @@
+{{define "content"}}
+<header class="home-head">
+  <h1>{{t .Lang "home.title"}}</h1>
+  <p class="description">{{t .Lang "home.lead"}}</p>
+</header>
+
+<ol class="steps">
+  {{range list "create" "watch" "pick"}}
+  <li>
+    <h2>{{t $.Lang (print "home." . ".title")}}</h2>
+    <p>{{t $.Lang (print "home." . ".text")}}</p>
+  </li>
+  {{end}}
+</ol>
+
+<div class="actions">
+  <a class="button" href="/new" data-key="n">{{t .Lang "home.cta"}} →</a>
+</div>
+<p class="hint">{{t .Lang "home.privacy"}}</p>
+<p class="hint">{{t .Lang "home.why"}} <a href="https://nobloat.org" rel="noopener">nobloat.org</a>.</p>
+{{end}}

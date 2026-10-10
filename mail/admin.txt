@@ -1,0 +1,12 @@
+{{t .Lang (print "mail.admin.subject." .Event) .Answer.Name .Poll.Title}}
+
+{{t .Lang "poll.name"}}: {{.Answer.Name}}
+{{t .Lang "poll.email"}}: {{or .Answer.Email "–"}}
+{{if ne .Event "removed"}}{{range .Choices}}  x {{.}}
+{{end}}{{end}}
+# {{t .Lang "results.title"}}
+{{range .Results}}
+{{printf "%02d" (inc .Index)}} {{.Option.Text}}  [{{len .Names}}] {{.Bar}}
+{{if .Names}}   {{range $i, $n := .Names}}{{if $i}}, {{end}}{{$n}}{{end}}
+{{end}}{{end}}
+{{.Link}}

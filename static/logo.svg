@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="logo" viewBox="0 0 176 24" width="176" height="24" role="img" aria-label="nobloat/poll">
+  <style>
+    text { font: 700 18px ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace; fill: #18181b; }
+    .p { fill: #c2410c; }
+    @media (prefers-color-scheme: dark) { text { fill: #dedbd2; } }
+  </style>
+  <text x="0" y="18"><tspan class="p">&gt;_</tspan> nobloat/poll</text>
+</svg>

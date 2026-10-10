@@ -1,0 +1,35 @@
+{{define "content"}}
+{{template "pollhead" .}}
+{{if not .Poll.Closed}}
+<pow-form difficulty="{{.Difficulty}}" working="{{t .Lang "pow.working"}}">
+<form method="post" action="/p/{{.Poll.Slug}}" class="card">
+  {{template "notice" .}}
+  <fieldset class="choices">
+    <legend>{{if .Poll.Multiple}}{{t .Lang "poll.choose.multiple"}}{{else}}{{t .Lang "poll.choose.single"}}{{end}}</legend>
+    {{range $i, $o := .Poll.Options}}
+    <label class="choice">
+      <input type="{{if $.Poll.Multiple}}checkbox{{else}}radio{{end}}" name="choice" value="{{$i}}"{{if lt $i 9}} data-key="{{inc $i}}"{{end}}{{if in $.Form "choice" (print $i)}} checked{{end}}{{if not $.Poll.Multiple}} required{{end}}>
+      <span>{{$o.Text}}</span>
+    </label>
+    {{end}}
+  </fieldset>
+  <div class="fields">
+    <label>{{t .Lang "poll.name"}}<input name="name" data-key="n" required maxlength="100" autocomplete="name" value="{{.Form.Get "name"}}"></label>
+    <label>{{t .Lang "poll.email.optional"}}<input name="email" type="email" data-key="e" maxlength="254" autocomplete="email" value="{{.Form.Get "email"}}"></label>
+  </div>
+  <p class="hint">{{t .Lang "poll.hint"}}</p>
+  <input type="hidden" name="pow" value="{{.Challenge}}">
+  <input type="hidden" name="nonce" value="">
+  <noscript><p class="error">{{t .Lang "poll.nojs"}}</p></noscript>
+  <button type="submit" data-key="s">{{t .Lang "poll.submit"}}</button>
+  <p class="pow-status" role="status" aria-live="polite"></p>
+</form>
+</pow-form>
+{{end}}
+{{if .Results}}
+<section aria-labelledby="results-h">
+  <h2 id="results-h">{{t .Lang "results.title"}}</h2>
+  {{template "results" .}}
+</section>
+{{end}}
+{{end}}

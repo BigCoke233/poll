@@ -1,0 +1,20 @@
+{{define "content"}}
+{{template "notice" .}}
+<div class="row">
+  <h1>{{.Title}}</h1>
+  <a class="button" href="/a/new" data-key="n">{{t .Lang "admin.new"}}</a>
+</div>
+{{if .Polls}}
+<ul class="polls">
+  {{range .Polls}}
+  <li>
+    <a href="/a/p/{{.Slug}}">{{.Title}}</a>
+    <span class="meta">{{len .Answers}} {{t $.Lang "admin.answers"}} · {{if .Closed}}{{t $.Lang "admin.closed"}}{{else}}{{t $.Lang "admin.open"}}{{end}}{{if .OwnerToken}} · {{t $.Lang "admin.by"}} {{.OwnerName}} &lt;{{.OwnerEmail}}&gt;{{end}}</span>
+    <span class="share-line"><a class="url" href="{{$.BaseURL}}/p/{{.Slug}}" target="_blank" rel="noopener">{{$.BaseURL}}/p/{{.Slug}}</a> <copy-link text="{{$.BaseURL}}/p/{{.Slug}}" copied="{{t $.Lang "admin.copied"}}"><button type="button" class="small secondary">{{t $.Lang "admin.copy"}}</button></copy-link></span>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">{{t .Lang "admin.empty"}}</p>
+{{end}}
+{{end}}

@@ -1,0 +1,7 @@
+{{define "content"}}
+<section class="card message">
+  <h1>{{.Title}}</h1>
+  {{with .Text}}<p>{{t $.Lang .}}</p>{{end}}
+  {{if .Link}}<p><a href="{{.Link}}">{{t .Lang .LinkText}}</a></p>{{end}}
+</section>
+{{end}}

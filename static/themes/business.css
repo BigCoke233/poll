@@ -1,0 +1,39 @@
+/* business: Google Workspace / Microsoft 365 office look. Product sans, white cards on
+   light grey, Google blue, grey hairlines, low elevation, small radii, flat buttons. */
+:root {
+  --font: "Google Sans", Roboto, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --accent: #1a73e8;
+  --bg: light-dark(#f8f9fa, #202124);
+  --fg: light-dark(#202124, #e8eaed);
+  --lo: light-dark(#5f6368, #9aa0a6);
+  --line: light-dark(#dadce0, #3c4043);
+  --raise: light-dark(#ffffff, #292a2d);
+  --danger: light-dark(#d93025, #f28b82);
+  --shadow: 0 1px 2px 0 #3c40434d, 0 1px 3px 1px #3c404326;
+
+  --bw: 1px;
+  --radius: 8px;
+  --rule: 1px solid var(--line);
+  --h-mark: "";
+  --focus: 0 0 0 2px var(--accent);
+  --btn-bg: var(--accent);
+  --btn-fg: #ffffff;
+  --btn-border: var(--accent);
+  --btn-radius: 4px;
+  --btn-shadow: none;
+  --btn-shadow-hover: 0 1px 2px 0 #3c40434d, 0 1px 3px 1px #3c404326;
+  --btn-hover: none;
+  --btn-active: none;
+  --btn-hover-bg: #1967d2;
+  --btn2-shadow: none;
+  --btn-spacing: .25px;
+  --btn-weight: 500;
+}
+
+/* Beyond variables: blue links without underline, white inputs, medium-weight headings. */
+a:not(.home) { color: var(--mark); font-weight: 500; text-decoration: none; &:hover { color: var(--mark); text-decoration: underline; } }
+a.danger { color: var(--danger); }
+input:not([type=radio], [type=checkbox]), textarea, select { background: var(--raise); border-radius: 4px; &:focus { box-shadow: inset 0 0 0 1px var(--mark); } }
+h1 { font-weight: 400; }
+label { font-weight: 500; }
+legend, h2 { font-weight: 600; }

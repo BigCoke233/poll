@@ -1,0 +1,11 @@
+{{t .Lang "mail.hello" .Poll.OwnerName}}
+
+{{t .Lang "mail.manage.text" .Poll.Title}}
+
+{{t .Lang "mail.manage.share"}}
+{{.Public}}
+
+{{t .Lang "mail.manage.manage"}}
+{{.Link}}
+
+{{t .Lang "manage.note"}}

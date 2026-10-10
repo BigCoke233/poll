@@ -1,0 +1,63 @@
+{{define "content"}}
+{{if .Admin}}<p class="meta"><a href="/a" data-key="Escape">← {{t .Lang "admin.title"}}</a></p>{{end}}
+{{template "pollhead" .}}
+{{template "notice" .}}
+
+<div class="admin-bar">
+  <p class="meta">
+    {{if .Poll.Closed}}{{t .Lang "admin.closed"}}{{else}}{{t .Lang "admin.open"}}{{end}}
+    · {{if .Poll.Multiple}}{{t .Lang "new.mode.multiple"}}{{else}}{{t .Lang "new.mode.single"}}{{end}}
+    · {{if .Poll.ResultsVisible}}{{t .Lang "admin.results.visible"}}{{else}}{{t .Lang "admin.results.hidden"}}{{end}}
+  </p>
+  {{if .Poll.OwnerToken}}{{if .Admin}}
+  <p class="meta">{{t .Lang "admin.by"}} <b>{{.Poll.OwnerName}}</b> &lt;{{.Poll.OwnerEmail}}&gt;</p>
+  {{else}}
+  <p class="meta">{{t .Lang "manage.note"}}</p>
+  {{end}}{{end}}
+  {{if .Poll.Closed}}<form method="post" action="{{.Base}}/reopen"><button type="submit" class="secondary" data-key="o">{{t .Lang "admin.reopen"}}</button></form>{{end}}
+  <div class="share">
+    <input readonly value="{{.BaseURL}}/p/{{.Poll.Slug}}" aria-label="{{t .Lang "admin.publiclink"}}">
+    <copy-link text="{{.BaseURL}}/p/{{.Poll.Slug}}" copied="{{t .Lang "admin.copied"}}"><button type="button" class="secondary" data-key="c">{{t .Lang "admin.copy"}}</button></copy-link>
+  </div>
+</div>
+
+
+<section aria-labelledby="answers-h">
+  <h2 id="answers-h">{{t .Lang "results.title"}}</h2>
+  <div class="by-option">
+    <ol class="results">
+      {{range $r := .Results}}
+      <li class="{{if and $.Poll.Closed (eq $.Poll.Outcome $r.Index)}}chosen{{end}}{{if $r.Lead}} lead{{end}}">
+        <span class="num">{{printf "%02d" (inc $r.Index)}}</span>
+        <div class="body">
+          <div class="result-head"><span>{{$r.Option.Text}}</span><span class="count">{{len $r.Names}}</span></div>
+          <meter min="0" max="{{$r.Max}}" value="{{len $r.Names}}" aria-hidden="true"></meter>
+          <div class="row-foot">
+            <ul class="names">{{range $a := $.Poll.Answers}}{{if $a.Chose $r.Index}}<li><button type="button" class="person" popovertarget="p-{{$a.Token}}" title="{{t $.Lang "admin.actions"}}">{{$a.Name}}</button></li>{{end}}{{end}}</ul>
+            {{if not $.Poll.Closed}}<a class="pick" href="{{$.Base}}/close?option={{$r.Index}}"{{if lt $r.Index 9}} data-key="{{inc $r.Index}}"{{end}}>{{t $.Lang "admin.pick"}}</a>{{end}}
+          </div>
+        </div>
+      </li>
+      {{end}}
+    </ol>
+    {{if not .Poll.Answers}}<p class="empty">{{t .Lang "admin.noanswers"}}</p>{{end}}
+  </div>
+  {{range $a := .Poll.Answers}}
+  <div popover id="p-{{$a.Token}}" class="pop">
+            <p><strong>{{$a.Name}}</strong><br><span class="meta">{{$a.Email}}</span></p>
+            <input readonly value="{{$.BaseURL}}/p/{{$.Poll.Slug}}/a/{{$a.Token}}" aria-label="{{t $.Lang "admin.link"}}">
+            <div class="actions">
+              <copy-link text="{{$.BaseURL}}/p/{{$.Poll.Slug}}/a/{{$a.Token}}" copied="{{t $.Lang "admin.copied"}}"><button type="button" class="secondary">{{t $.Lang "admin.copy"}}</button></copy-link>
+              <form method="post" action="{{$.Base}}/remove"><input type="hidden" name="token" value="{{$a.Token}}"><button type="submit" class="danger">{{t $.Lang "admin.remove"}}</button></form>
+            </div>
+          </div>
+  {{end}}
+  {{if not .Poll.Closed}}<p class="hint">{{t .Lang "admin.close.hint"}}</p>{{end}}
+</section>
+
+<details class="edit"{{if .Error}} open{{end}}>
+  <summary data-key="e">{{t .Lang "admin.edit"}}</summary>
+  {{template "pollform" .}}
+  <p class="danger-zone"><a class="danger" href="{{.Base}}/delete">{{t .Lang "admin.delete"}}</a></p>
+</details>
+{{end}}

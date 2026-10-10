@@ -1,0 +1,9 @@
+{{t .Lang "mail.hello" .Answer.Name}}
+
+{{t .Lang "mail.closed.text" .Poll.Title}}
+
+  {{.Poll.OutcomeOption.Text}}
+
+{{if .ICS}}{{t .Lang "mail.closed.ics"}}
+
+{{end}}{{.Link}}

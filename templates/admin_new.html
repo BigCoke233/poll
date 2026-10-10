@@ -1,0 +1,7 @@
+{{define "content"}}
+{{if .Admin}}<p class="meta"><a href="/a" data-key="Escape">← {{t .Lang "admin.title"}}</a></p>{{end}}
+<h1>{{.Title}}</h1>
+{{if .Public}}<p class="description">{{t .Lang "new.public.intro"}}</p>{{end}}
+{{template "notice" .}}
+{{template "pollform" .}}
+{{end}}

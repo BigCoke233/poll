@@ -1,0 +1,9 @@
+{{t .Lang "mail.hello" .Answer.Name}}
+
+{{t .Lang "mail.link.text" .Poll.Title}}
+
+{{.Link}}
+
+{{t .Lang "mail.link.notify"}}
+
+{{t .Lang "mail.link.note"}}

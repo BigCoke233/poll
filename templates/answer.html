@@ -1,0 +1,39 @@
+{{define "content"}}
+{{template "pollhead" .}}
+{{template "notice" .}}
+<section class="card" aria-labelledby="yours-h">
+  <h2 id="yours-h">{{t .Lang "answer.yours" .Answer.Name}}</h2>
+  {{if .Poll.Closed}}
+  <ul class="mine">
+    {{range $i, $o := .Poll.Options}}
+    <li{{if $.Answer.Chose $i}} class="picked"{{end}}><span class="mark" aria-hidden="true">{{if $.Answer.Chose $i}}✓{{end}}</span>{{$o.Text}}{{if $.Answer.Chose $i}}<span class="visually-hidden"> ({{t $.Lang "answer.picked"}})</span>{{end}}</li>
+    {{end}}
+  </ul>
+  {{else}}
+  <auto-save {{template "autosave-attrs" .}}>
+  <form method="post" action="/p/{{.Poll.Slug}}/a/{{.Answer.Token}}/update">
+    <fieldset class="choices">
+      <legend>{{if .Poll.Multiple}}{{t .Lang "poll.choose.multiple"}}{{else}}{{t .Lang "poll.choose.single"}}{{end}}</legend>
+      {{range $i, $o := .Poll.Options}}
+      <label class="choice">
+        <input type="{{if $.Poll.Multiple}}checkbox{{else}}radio{{end}}" name="choice" value="{{$i}}"{{if lt $i 9}} data-key="{{inc $i}}"{{end}}{{if $.Answer.Chose $i}} checked{{end}}{{if not $.Poll.Multiple}} required{{end}}>
+        <span>{{$o.Text}}</span>
+      </label>
+      {{end}}
+    </fieldset>
+    <div class="actions">
+      <button type="submit" data-key="s" data-autosave-hide>{{t .Lang "answer.update"}}</button>
+      <p class="autosave" data-autosave-status role="status" aria-live="polite"></p>
+      <a href="/p/{{.Poll.Slug}}/a/{{.Answer.Token}}/remove" class="danger" data-key="r">{{t .Lang "answer.remove"}}</a>
+    </div>
+  </form>
+  </auto-save>
+  {{end}}
+</section>
+{{if .Results}}
+<section aria-labelledby="results-h">
+  <h2 id="results-h">{{t .Lang "results.title"}}</h2>
+  {{template "results" .}}
+</section>
+{{end}}
+{{end}}

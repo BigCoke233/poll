@@ -1,0 +1,41 @@
+/* fun: rounded type, fresh mint paper, forest ink, leafy green accent, lime buttons.
+   Thick borders, big round corners, dotted rules, wavy links, slightly tilted cards,
+   pill buttons that wiggle on hover, checkboxes that bounce. */
+:root {
+  --font: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif;
+  --accent: #16a34a;
+  --bg: light-dark(#e9fbe5, #0f2418);
+  --fg: light-dark(#14361f, #e6ffe9);
+  --lo: light-dark(#4b7a57, #9fd3aa);
+  --line: light-dark(#14361f, #e6ffe9);
+  --raise: light-dark(#f7fff4, #163322);
+  --shadow: 7px 7px 0 var(--accent);
+
+  --bw: 3px;
+  --radius: 18px;
+  --rule: 3px dotted color-mix(in oklab, var(--accent) 55%, transparent);
+  --h-mark: "🌱";
+  --focus: 4px 4px 0 var(--accent);
+  --btn-bg: #a3e635;
+  --btn-fg: #14361f;
+  --btn-border: var(--fg);
+  --btn-radius: 999px;
+  --btn-shadow: 4px 4px 0 var(--fg);
+  --btn-shadow-hover: 6px 6px 0 var(--fg);
+  --btn-hover: translate(-2px, -2px) rotate(-2deg);
+  --btn-active: translate(4px, 4px);
+  --btn2-shadow: 3px 3px 0 var(--fg);
+  --btn-weight: 800;
+}
+h1 { text-decoration: underline wavy var(--accent) 3px; text-underline-offset: .25em; text-decoration-skip-ink: none; }
+a:not(.button) { text-decoration-style: wavy; text-decoration-color: var(--accent); }
+.card { rotate: -.6deg; }
+.stamp { rotate: 4deg; }
+input:is([type=checkbox], [type=radio]):checked { animation: boing .35s cubic-bezier(.3, 1.8, .5, 1); }
+:is(button, .button):not(.person, .remove):hover { animation: wiggle .4s ease-in-out; }
+@keyframes boing { from { transform: scale(.4); } }
+@keyframes wiggle { 25% { rotate: -3deg; } 75% { rotate: 3deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .card, .stamp { rotate: none; }
+  input:checked, :is(button, .button):hover { animation: none !important; }
+}

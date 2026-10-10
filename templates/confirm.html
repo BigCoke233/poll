@@ -1,0 +1,12 @@
+{{define "content"}}
+{{template "pollhead" .}}
+<form method="post" action="{{.Action}}" class="card confirm">
+  <p>{{t .Lang .Text}}</p>
+  {{if .Detail}}<p class="detail">{{.Detail}}</p>{{end}}
+  {{range $k, $v := .Form}}<input type="hidden" name="{{$k}}" value="{{index $v 0}}">{{end}}
+  <div class="actions">
+    <button type="submit" data-key="y">{{t .Lang .Button}}</button>
+    {{if .Link}}<a href="{{.Link}}" data-key="Escape">{{t .Lang .LinkText}}</a>{{end}}
+  </div>
+</form>
+{{end}}

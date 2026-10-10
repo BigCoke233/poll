@@ -1,0 +1,17 @@
+/* minimal (default): monospace, warm grey paper and ink, inverted in dark mode.
+   No color at all: marks are ink. Flat outlined buttons that invert on hover. */
+:root {
+  --accent: #18181b; /* plain hex for mails; pages use the next line */
+  --accent: light-dark(#18181b, #dedbd2); /* ink */
+  --mark: var(--accent);
+  --focus: 0 0 0 1px var(--mark);
+  --btn-bg: transparent;
+  --btn-fg: var(--fg);
+  --btn-shadow: none;
+  --btn-shadow-hover: none;
+  --btn-hover: none;
+  --btn-active: none;
+  --btn-hover-bg: var(--fg);
+  --btn-hover-fg: var(--bg);
+  --btn2-shadow: none;
+}
