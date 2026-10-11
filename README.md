@@ -56,7 +56,7 @@ make screenshots  # all pages × themes × desktop/phone × light/dark (needs ch
 
 - Configure with environment variables; [`.env.sample`](.env.sample) documents every setting
 - Listens on `:8737` (`PORT` to change), stores polls in `./data` (`/data` in the image)
-- Startup checks the config and the SMTP login, and exits with a list of problems if anything is wrong
+- Startup validates the config; mail is queued on disk and retried after SMTP failures or restarts
 
 ```sh
 mkdir data

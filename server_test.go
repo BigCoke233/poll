@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -48,6 +49,13 @@ func newEnv(t *testing.T, opts ...func(*config)) *testEnv {
 	e.srv = s
 	e.ts = httptest.NewServer(s.handler())
 	t.Cleanup(e.ts.Close)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := s.outbox.shutdown(ctx); err != nil {
+			t.Error(err)
+		}
+	})
 	return e
 }
 
@@ -68,6 +76,17 @@ func (e *testEnv) mailCount() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return len(e.mails)
+}
+
+func (e *testEnv) waitOutbox() {
+	e.t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for e.srv.outbox.pending() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if e.srv.outbox.pending() {
+		e.t.Fatal("mail outbox did not drain")
+	}
 }
 
 func (e *testEnv) mailsTo(addr string) []Mail {
@@ -134,6 +153,7 @@ func (e *testEnv) do(method, path string, form url.Values, admin bool, hdr ...st
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
+	e.waitOutbox()
 	return resp{res.StatusCode, string(b), res.Header}
 }
 
@@ -269,6 +289,21 @@ func TestSecurity(t *testing.T) {
 	}
 	if r := e.submit("dinner", strings.Repeat("x", 101), "a@example.com", 0); r.status != 400 {
 		t.Fatalf("long name: %d", r.status)
+	}
+}
+
+func TestPathTraversal(t *testing.T) {
+	e := newEnv(t)
+	os.WriteFile(filepath.Join(e.dataDir, "secret.json"), []byte(`{"title": "SECRET"}`), 0o600)
+	for _, path := range []string{"/p/..%2Fsecret", "/p/%2e%2e%2fsecret", "/p/..%5Csecret", "/p/../secret", "/p/..%2Fsecret/m/x", "/static/..%2F..%2Fmain.go", "/static/../main.go", "/theme.css?theme=../../main"} {
+		if r := e.get(path); strings.Contains(r.body, "SECRET") || strings.Contains(r.body, "package main") {
+			t.Errorf("%s leaked a file outside its directory", path)
+		}
+	}
+	for _, id := range []string{"../secret", "..", "a/b", "A", ""} {
+		if validID(id) {
+			t.Errorf("validID(%q) must be false", id)
+		}
 	}
 }
 

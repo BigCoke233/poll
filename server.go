@@ -54,7 +54,7 @@ type server struct {
 	store    *store
 	pow      *pow
 	now      func() time.Time
-	send     func(Mail) error
+	outbox   *outbox
 	pages    map[string]*template.Template
 	mailText *ttemplate.Template
 	themes   map[string][]byte
@@ -68,7 +68,7 @@ func newServer(cfg config, now func() time.Time, send func(Mail) error) (*server
 	if cfg.Theme == "" {
 		cfg.Theme = "minimal"
 	}
-	s := &server{cfg: cfg, store: st, pow: newPow(cfg.Difficulty, now), now: now, send: send, pages: map[string]*template.Template{}}
+	s := &server{cfg: cfg, store: st, pow: newPow(cfg.Difficulty, now), now: now, pages: map[string]*template.Template{}}
 	funcs := template.FuncMap{
 		"t":       T,
 		"in":      func(v url.Values, k, s string) bool { return slices.Contains(v[k], s) },
@@ -86,6 +86,10 @@ func newServer(cfg config, now func() time.Time, send func(Mail) error) (*server
 	s.themes = map[string][]byte{}
 	for _, name := range themeNames() {
 		s.themes[name], _ = assets.ReadFile("static/themes/" + name + ".css")
+	}
+	s.outbox, err = openOutbox(cfg.DataDir, send)
+	if err != nil {
+		return nil, err
 	}
 	return s, nil
 }
@@ -354,10 +358,10 @@ func (s *server) mail(to, name, subject string, d mailData, ics []byte) error {
 	var txt bytes.Buffer
 	err := s.mailText.ExecuteTemplate(&txt, name+".txt", d)
 	if err == nil {
-		err = s.send(Mail{To: to, Subject: subject, Text: txt.String(), ICS: ics})
+		err = s.outbox.enqueue(Mail{To: to, Subject: subject, Text: txt.String(), ICS: ics})
 	}
 	if err != nil {
-		log.Printf("mail %s to %s: %v", name, to, err)
+		log.Printf("mail %s to=%q subject=%q: %v", name, to, subject, err)
 	}
 	return err
 }

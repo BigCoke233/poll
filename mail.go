@@ -94,15 +94,6 @@ func (c smtpConfig) dial() (*smtp.Client, error) {
 	return cl, nil
 }
 
-func (c smtpConfig) check() error {
-	cl, err := c.dial()
-	if err != nil {
-		return err
-	}
-	defer cl.Close()
-	return cl.Quit()
-}
-
 func (c smtpConfig) send(m Mail) error {
 	msg, err := buildMessage(c.From, m, time.Now())
 	if err != nil {

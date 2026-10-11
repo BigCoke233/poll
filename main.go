@@ -71,9 +71,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid config:\n%v", err)
 	}
-	if err := cfg.SMTP.check(); err != nil {
-		log.Fatalf("SMTP check failed (%s, %s, auth: %v): %v", cfg.SMTP.Addr, cfg.SMTP.TLS, cfg.SMTP.User != "", err)
-	}
 	s, err := newServer(cfg, time.Now, cfg.SMTP.send)
 	if err != nil {
 		log.Fatal(err)
@@ -99,6 +96,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("shutdown: %v", err)
+	}
+	if err := s.outbox.shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
 	log.Print("stopped")
