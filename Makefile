@@ -1,7 +1,7 @@
 IMAGE ?= ghcr.io/nobloat/poll
 TAG ?= $(or $(shell git describe --tags --exact-match 2>/dev/null),main)
 
-.PHONY: dev mailpit test build package push screenshots clean
+.PHONY: dev mailpit test build build-upx package push screenshots clean
 dev: mailpit
 	test -f .env || cp .env.sample .env
 	test -d data/polls || { mkdir -p data/polls && cp seed/*.json data/polls/; }
@@ -17,6 +17,10 @@ test:
 build:
 	CGO_ENABLED=0 go build -tags timetzdata,nethttpomithttp2 -trimpath -ldflags="-s -w -X main.release=$(TAG)" -o poll .
 	@du -h poll | cut -f1 | xargs echo "binary size:"
+
+build-upx: build
+	upx -q --best poll
+	@du -h poll | cut -f1 | xargs echo "compressed size:"
 
 package:
 	docker build -t $(IMAGE):$(TAG) .

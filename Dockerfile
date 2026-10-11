@@ -2,8 +2,9 @@ FROM golang:1.27 AS build
 WORKDIR /src
 COPY . .
 
+RUN apt-get update && apt-get install -y --no-install-recommends upx-ucl && rm -rf /var/lib/apt/lists/*
 RUN go vet ./... && go test ./... \
- && make build && mv poll /poll \
+ && make build-upx && mv poll /poll \
  && mkdir -p /data
 
 FROM scratch

@@ -2,6 +2,8 @@
 
 **Live demo: [poll.nobloat.org](https://poll.nobloat.org)**
 
+There is also an [article](https://nobloat.org/articles/2026-10-11-nobloat-poll.html) about this.
+
 A minimal alternative to Doodle, born out of frustration with it's ongoing *enshiti***ion*.
 
 - **Plain Go stdlib only**, no dependencies (see [go.mod](go.mod)), plus a little JavaScript and CSS
