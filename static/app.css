@@ -230,6 +230,7 @@ auto-save:defined [data-autosave-hide], .actions .autosave:empty { display: none
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .stack { display: grid; gap: 1rem; }
+.stack h2 { margin-bottom: .4rem; }
 .home-head h1 { font-size: clamp(1.8rem, 6vw, 2.8rem); }
 .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
 .steps li {
