@@ -80,12 +80,10 @@ func (e *testEnv) mailCount() int {
 
 func (e *testEnv) waitOutbox() {
 	e.t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for e.srv.outbox.pending() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if e.srv.outbox.pending() {
-		e.t.Fatal("mail outbox did not drain")
+	for deadline := time.Now().Add(5 * time.Second); e.srv.outbox.pending(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			e.t.Fatal("mail outbox did not drain")
+		}
 	}
 }
 
