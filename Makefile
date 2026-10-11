@@ -1,5 +1,5 @@
 IMAGE ?= ghcr.io/nobloat/poll
-TAG ?= latest
+TAG ?= $(or $(shell git describe --tags --exact-match 2>/dev/null),main)
 
 .PHONY: dev mailpit test build package push screenshots clean
 dev: mailpit
@@ -15,7 +15,7 @@ test:
 	go vet ./... && go test -race ./...
 
 build:
-	CGO_ENABLED=0 go build -tags timetzdata,nethttpomithttp2 -trimpath -ldflags="-s -w" -o poll .
+	CGO_ENABLED=0 go build -tags timetzdata,nethttpomithttp2 -trimpath -ldflags="-s -w -X main.release=$(TAG)" -o poll .
 	@du -h poll | cut -f1 | xargs echo "binary size:"
 
 package:

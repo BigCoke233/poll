@@ -286,8 +286,9 @@ func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 		s.fail(w, r, err)
 		return
 	}
+	// shortcut: delivery is not durable across shutdown, add a persistent queue if delivery must be guaranteed.
 	for _, a := range p.Answers {
-		s.mailClosed(p, a)
+		go s.mailClosed(p, a)
 	}
 	http.Redirect(w, r, m.base+"?ok=closed", http.StatusSeeOther)
 }

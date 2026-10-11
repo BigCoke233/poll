@@ -3,7 +3,7 @@ WORKDIR /src
 COPY . .
 
 RUN go vet ./... && go test ./... \
- && CGO_ENABLED=0 go build -tags timetzdata,nethttpomithttp2 -trimpath -ldflags="-s -w" -o /poll . \
+ && make build && mv poll /poll \
  && mkdir -p /data
 
 FROM scratch

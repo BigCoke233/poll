@@ -44,21 +44,13 @@ A minimal alternative to Doodle, born out of frustration with it's ongoing *ensh
 make dev          # Mailpit (mail UI on http://localhost:8025) + go run . (creates .env from .env.sample)
 make test         # go vet + go test -race
 make build        # static ./poll binary
-make package      # Docker image ghcr.io/nobloat/poll:latest
-make push         # package + push (TAG=v1.0 for a version)
+make package      # Docker image ghcr.io/nobloat/poll:<git tag, or main>
+make push         # package + push (TAG=… to override)
 make screenshots  # all pages × themes × desktop/phone × light/dark (needs chromium + ImageMagick)
 ```
 
 - Admin: http://localhost:8737/a (`admin` / `admin`)
-- CI (GitHub Actions) runs `make test` and `make build` on every push to `main` and on pull requests
-- Release: push a tag like `v1.2.0`; GitHub Actions builds and pushes `ghcr.io/nobloat/poll:v1.2.0` and `:latest`. The footer shows the version and short commit
 - Example polls: an empty `./data` gets the polls from `seed/`; `rm -rf data` resets them
-- Code layout, one Go package:
-  - `main.go`: config, startup
-  - `server.go`: routes, participant pages
-  - `manage.go`: creating and managing polls
-  - `store.go`, `mail.go`, `pow.go`: storage, mail, spam check
-  - `templates/` HTML, `mail/` plain-text mails, `i18n/` texts, `static/` CSS and JS
 
 ## Deployment
 

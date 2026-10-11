@@ -187,18 +187,15 @@ func (s *server) themeFor(name string) []byte {
 	return s.themes[s.cfg.Theme]
 }
 
+var release string
+
 var version = sync.OnceValue(func() string {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	v, _, _ := strings.Cut(bi.Main.Version, "+")
-	if v == "" || v == "(devel)" || strings.Contains(v, "-") {
-		v = "dev"
-	}
-	for _, s := range bi.Settings {
-		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
-			v += " (" + s.Value[:7] + ")"
+	v := cmp.Or(release, "main")
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range bi.Settings {
+			if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+				v += " (" + s.Value[:7] + ")"
+			}
 		}
 	}
 	return v
@@ -218,7 +215,6 @@ type result struct {
 	Lead   bool
 }
 
-func (r result) Pct() int    { return len(r.Names) * 100 / r.Max }
 func (r result) Bar() string { return strings.Repeat("■", len(r.Names)) }
 
 func results(p *Poll) []result {
