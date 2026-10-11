@@ -11,7 +11,7 @@
   </ul>
   {{else}}
   <auto-save {{template "autosave-attrs" .}}>
-  <form method="post" action="/p/{{.Poll.Slug}}/a/{{.Answer.Token}}/update">
+  <form method="post" action="/p/{{.Poll.ID}}/a/{{.Answer.Token}}/update">
     <fieldset class="choices">
       <legend>{{if .Poll.Multiple}}{{t .Lang "poll.choose.multiple"}}{{else}}{{t .Lang "poll.choose.single"}}{{end}}</legend>
       {{range $i, $o := .Poll.Options}}
@@ -24,7 +24,7 @@
     <div class="actions">
       <button type="submit" data-key="s" data-autosave-hide>{{t .Lang "answer.update"}}</button>
       <p class="autosave" data-autosave-status role="status" aria-live="polite"></p>
-      <a href="/p/{{.Poll.Slug}}/a/{{.Answer.Token}}/remove" class="danger" data-key="r">{{t .Lang "answer.remove"}}</a>
+      <a href="/p/{{.Poll.ID}}/a/{{.Answer.Token}}/remove" class="danger" data-key="r">{{t .Lang "answer.remove"}}</a>
     </div>
   </form>
   </auto-save>

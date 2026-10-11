@@ -8,9 +8,9 @@
 <ul class="polls">
   {{range .Polls}}
   <li>
-    <a href="/p/{{.Slug}}/m/{{.OwnerToken}}">{{.Title}}</a>
+    <a href="/p/{{.ID}}/m/{{.OwnerToken}}">{{.Title}}</a>
     <span class="meta">{{len .Answers}} {{t $.Lang "admin.answers"}} · {{if .Closed}}{{t $.Lang "admin.closed"}}{{else}}{{t $.Lang "admin.open"}}{{end}} · {{t $.Lang "admin.by"}} {{.OwnerName}}{{with .OwnerEmail}} &lt;{{.}}&gt;{{end}}</span>
-    <span class="share-line"><a class="url" href="{{$.BaseURL}}/p/{{.Slug}}" target="_blank" rel="noopener">{{$.BaseURL}}/p/{{.Slug}}</a> <copy-link text="{{$.BaseURL}}/p/{{.Slug}}" copied="{{t $.Lang "admin.copied"}}"><button type="button" class="small secondary">{{t $.Lang "admin.copy"}}</button></copy-link></span>
+    <span class="share-line"><a class="url" href="{{$.BaseURL}}/p/{{.ID}}" target="_blank" rel="noopener">{{$.BaseURL}}/p/{{.ID}}</a> <copy-link text="{{$.BaseURL}}/p/{{.ID}}" copied="{{t $.Lang "admin.copied"}}"><button type="button" class="small secondary">{{t $.Lang "admin.copy"}}</button></copy-link></span>
   </li>
   {{end}}
 </ul>

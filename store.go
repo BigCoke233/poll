@@ -39,7 +39,7 @@ type Answer struct {
 func (a *Answer) Chose(i int) bool { return slices.Contains(a.Choices, i) }
 
 type Poll struct {
-	Slug           string    `json:"slug"`
+	ID             string    `json:"-"`
 	Title          string    `json:"title"`
 	Description    string    `json:"description"`
 	Multiple       bool      `json:"multiple"`
@@ -106,24 +106,21 @@ func openStore(dataDir string) (*store, error) {
 	return &store{dir: dir}, nil
 }
 
-func (s *store) path(slug string) string { return filepath.Join(s.dir, slug+".json") }
+func (s *store) path(id string) string { return filepath.Join(s.dir, id+".json") }
 
-func (s *store) read(slug string) (*Poll, error) {
-	if !validSlug(slug) {
+func (s *store) read(id string) (*Poll, error) {
+	if !validID(id) {
 		return nil, errNotFound
 	}
-	b, err := os.ReadFile(s.path(slug))
+	b, err := os.ReadFile(s.path(id))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, errNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	var p Poll
-	if err := json.Unmarshal(b, &p); err != nil {
-		return nil, err
-	}
-	return &p, nil
+	p := Poll{ID: id}
+	return &p, json.Unmarshal(b, &p)
 }
 
 func (s *store) write(p *Poll) error {
@@ -147,34 +144,34 @@ func (s *store) write(p *Poll) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(f.Name(), s.path(p.Slug)); err != nil {
+	if err := os.Rename(f.Name(), s.path(p.ID)); err != nil {
 		return err
 	}
 	return s.syncDir()
 }
 
-func (s *store) get(slug string) (*Poll, error) {
+func (s *store) get(id string) (*Poll, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.read(slug)
+	return s.read(id)
 }
 
-func (s *store) update(slug, action string, fn func(*Poll) error) (*Poll, error) {
+func (s *store) update(id, action string, fn func(*Poll) error) (*Poll, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, err := s.read(slug)
+	p, err := s.read(id)
 	if err != nil {
 		return nil, err
 	}
 	if err := fn(p); err != nil {
 		return p, err
 	}
-	return p, s.logged(slug, action, s.write(p))
+	return p, s.logged(id, action, s.write(p))
 }
 
-func (s *store) logged(slug, action string, err error) error {
+func (s *store) logged(id, action string, err error) error {
 	if err == nil {
-		log.Printf("poll %s: %s", slug, action)
+		log.Printf("poll %s: %s", id, action)
 	}
 	return err
 }
@@ -182,27 +179,27 @@ func (s *store) logged(slug, action string, err error) error {
 func (s *store) create(p *Poll, action string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := os.Stat(s.path(p.Slug)); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(s.path(p.ID)); !errors.Is(err, fs.ErrNotExist) {
 		if err == nil {
 			return errExists
 		}
 		return err
 	}
-	return s.logged(p.Slug, action, s.write(p))
+	return s.logged(p.ID, action, s.write(p))
 }
 
-func (s *store) delete(slug, action string) error {
+func (s *store) delete(id, action string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !validSlug(slug) {
+	if !validID(id) {
 		return errNotFound
 	}
-	if err := os.Remove(s.path(slug)); errors.Is(err, fs.ErrNotExist) {
+	if err := os.Remove(s.path(id)); errors.Is(err, fs.ErrNotExist) {
 		return errNotFound
 	} else if err != nil {
 		return err
 	}
-	return s.logged(slug, action, s.syncDir())
+	return s.logged(id, action, s.syncDir())
 }
 
 func (s *store) syncDir() error {

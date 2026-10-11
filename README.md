@@ -1,6 +1,6 @@
 # nobloat/poll
 
-A minimal alternative to Doodle: born out of frustration with Doodle's ongoing enshit***ion, and from wanting to build something really minimal and highly functional again.
+A minimal alternative to Doodle: born out of frustration with Doodle's ongoing *enshiti***ion*.
 
 - **Plain Go stdlib only**, no dependencies (see [go.mod](go.mod)), plus a little JavaScript and CSS
 - One statically compiled binary, in the spirit of [nobloat.org](https://nobloat.org)
@@ -8,22 +8,16 @@ A minimal alternative to Doodle: born out of frustration with Doodle's ongoing e
 
 ## Features
 
-- Create polls without an account: a name is enough, email is optional
-- Answer polls without an account: a name is enough, email is optional (without it, no updates are sent)
-- Mails via SMTP with personal links to manage a poll or change an answer
-- GDPR friendly: each poll is one `.json` file; delete the file (or use the web UI) and it's gone
-- Every change to a poll is exclusively locked
+- Create and ansswer polls without an account
+- Optional mails via SMTP with personal links to manage a poll or change an answer
+- GDPR friendly: each poll is one `.json` file
+- Spam protection without CAPTCHAs with proof of work
 - Admin (Basic Auth) can list and manage all polls
-- Public poll creation can be switched off (admin only)
-- Easy [theming](#theming)
-- Light and dark mode, following the system setting
-- [Translations](#translations) (English, German, French, Spanish), picked from the browser language
+- Easy [theming](#theming), with light and dark mode.
+- [Translations](#translations): English, German, French, Spanish
 
 ## Non-features
 
-- Tracking / analytics
-- Account management
-- Sophisticated logins: one admin password, personal links for everyone else
 - Scaling to millions of polls with thousands of participants voting at the same time
 
 ## Screenshots

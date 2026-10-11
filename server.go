@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -33,6 +34,7 @@ var (
 	errLocked  = errors.New("options locked")
 	errInvalid = errors.New("invalid input")
 	errChoice  = errors.New("invalid choice")
+	errPow     = errors.New("proof of work failed")
 )
 
 type config struct {
@@ -92,6 +94,9 @@ func (s *server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.FileServerFS(assets))
 	mux.HandleFunc("GET /theme.css", s.theme)
+	mux.HandleFunc("GET /pow", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%d %s", s.cfg.Difficulty, s.pow.issue())
+	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.PublicCreate {
 			l := lang(r)
@@ -107,18 +112,34 @@ func (s *server) handler() http.Handler {
 	}
 	create("GET /new", s.newPoll)
 	create("POST /new", s.createPoll)
-	mux.HandleFunc("GET /p/{slug}", s.pollPage)
-	mux.HandleFunc("POST /p/{slug}", s.submit)
-	mux.HandleFunc("GET /p/{slug}/a/{token}", s.answerPage)
-	mux.HandleFunc("GET /p/{slug}/a/{token}/thanks", s.thanks)
-	mux.HandleFunc("GET /p/{slug}/answered", s.answered)
-	mux.HandleFunc("GET /p/{slug}/removed", s.removed)
-	mux.HandleFunc("POST /p/{slug}/a/{token}/update", s.updateAnswer)
-	mux.HandleFunc("GET /p/{slug}/a/{token}/remove", s.removeConfirm)
-	mux.HandleFunc("POST /p/{slug}/a/{token}/remove", s.removeAnswer)
+	mux.HandleFunc("GET /p/{id}", s.pollPage)
+	mux.HandleFunc("POST /p/{id}", s.submit)
+	mux.HandleFunc("GET /p/{id}/a/{token}", s.answerPage)
+	mux.HandleFunc("GET /p/{id}/a/{token}/thanks", s.thanks)
+	mux.HandleFunc("GET /p/{id}/answered", s.answered)
+	mux.HandleFunc("GET /p/{id}/removed", s.removed)
+	mux.HandleFunc("POST /p/{id}/a/{token}/update", s.updateAnswer)
+	mux.HandleFunc("GET /p/{id}/a/{token}/remove", s.removeConfirm)
+	mux.HandleFunc("POST /p/{id}/a/{token}/remove", s.removeAnswer)
 	admin("GET /a", s.adminIndex)
 	s.manageRoutes(mux)
-	return s.headers(http.NewCrossOriginProtection().Handler(mux))
+	return s.headers(http.NewCrossOriginProtection().Handler(s.proved(mux)))
+}
+
+func (s *server) proved(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if err := r.ParseForm(); err != nil {
+				s.fail(w, r, errors.Join(errInvalid, err))
+				return
+			}
+			if !s.pow.verify(r.PostForm.Get("pow"), r.PostForm.Get("nonce")) {
+				s.fail(w, r, errPow)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) headers(next http.Handler) http.Handler {
@@ -224,29 +245,27 @@ func results(p *Poll) []result {
 }
 
 type page struct {
-	Lang       string
-	Home       string
-	Base       string
-	Public     bool
-	Theme      string
-	Themes     []string
-	BaseURL    string
-	Title      string
-	Poll       *Poll
-	Polls      []*Poll
-	Answer     *Answer
-	Results    []result
-	Error      string
-	Notice     string
-	Form       url.Values
-	Challenge  string
-	Difficulty int
-	Text       string
-	Detail     string
-	Action     string
-	Button     string
-	Link       string
-	LinkText   string
+	Lang     string
+	Home     string
+	Base     string
+	Public   bool
+	Theme    string
+	Themes   []string
+	BaseURL  string
+	Title    string
+	Poll     *Poll
+	Polls    []*Poll
+	Answer   *Answer
+	Results  []result
+	Error    string
+	Notice   string
+	Form     url.Values
+	Text     string
+	Detail   string
+	Action   string
+	Button   string
+	Link     string
+	LinkText string
 }
 
 func lang(r *http.Request) string { return detectLang(r.Header.Get("Accept-Language")) }
@@ -302,6 +321,8 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		s.message(w, r, http.StatusConflict, "closed.title", "closed.text", "", "")
 	case errors.Is(err, errLocked):
 		s.message(w, r, http.StatusConflict, "locked.title", "locked.text", "", "")
+	case errors.Is(err, errPow):
+		s.message(w, r, http.StatusBadRequest, "invalid.title", "err.pow", "", "")
 	case errors.Is(err, errChoice):
 		s.message(w, r, http.StatusBadRequest, "invalid.title", "err.choice", "", "")
 	case errors.As(err, new(*http.MaxBytesError)):
@@ -312,14 +333,6 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		log.Print(err)
 		s.message(w, r, http.StatusInternalServerError, "error.title", "error.text", "", "")
 	}
-}
-
-func (s *server) parseForm(w http.ResponseWriter, r *http.Request) bool {
-	if err := r.ParseForm(); err != nil {
-		s.fail(w, r, errors.Join(errInvalid, err))
-		return false
-	}
-	return true
 }
 
 type mailData struct {
@@ -335,7 +348,7 @@ type mailData struct {
 }
 
 func (s *server) answerLink(p *Poll, a *Answer) string {
-	return s.cfg.BaseURL + "/p/" + p.Slug + "/a/" + a.Token
+	return s.cfg.BaseURL + "/p/" + p.ID + "/a/" + a.Token
 }
 
 func (s *server) mail(to, name, subject string, d mailData, ics []byte) error {
@@ -375,18 +388,18 @@ func (s *server) mailClosed(p *Poll, a *Answer) {
 	}
 	if o.HasDate() {
 		u, _ := url.Parse(s.cfg.BaseURL)
-		ics = buildICS(p.Slug+"@"+u.Hostname(), p.Title, p.Description, o, s.now())
+		ics = buildICS(p.ID+"@"+u.Hostname(), p.Title, p.Description, o, s.now())
 	}
 	s.mail(a.Email, "closed", T(a.Lang, "mail.closed.subject", p.Title), mailData{Lang: a.Lang, Poll: p, Answer: a, Link: s.answerLink(p, a), ICS: ics != nil}, ics)
 }
 
 func (s *server) pollPage(w http.ResponseWriter, r *http.Request) {
-	p, err := s.store.get(r.PathValue("slug"))
+	p, err := s.store.get(r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	pg := &page{Title: p.Title, Poll: p, Challenge: s.pow.issue(), Difficulty: s.cfg.Difficulty}
+	pg := &page{Title: p.Title, Poll: p}
 	if p.ResultsVisible {
 		pg.Results = results(p)
 	}
@@ -407,11 +420,8 @@ func parseChoices(p *Poll, vals []string) ([]int, bool) {
 }
 
 func (s *server) submit(w http.ResponseWriter, r *http.Request) {
-	if !s.parseForm(w, r) {
-		return
-	}
-	slug := r.PathValue("slug")
-	p, err := s.store.get(slug)
+	id := r.PathValue("id")
+	p, err := s.store.get(id)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -431,11 +441,9 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 		errKey = "err.email"
 	case !okChoices:
 		errKey = "err.choice"
-	case !s.pow.verify(f.Get("pow"), f.Get("nonce")):
-		errKey = "err.pow"
 	}
 	if errKey != "" {
-		pg := &page{Title: p.Title, Poll: p, Error: errKey, Form: f, Challenge: s.pow.issue(), Difficulty: s.cfg.Difficulty}
+		pg := &page{Title: p.Title, Poll: p, Error: errKey, Form: f}
 		if p.ResultsVisible {
 			pg.Results = results(p)
 		}
@@ -443,12 +451,15 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var added *Answer
-	p, err = s.store.update(slug, "answer added", func(p *Poll) error {
+	p, err = s.store.update(id, "answer added", func(p *Poll) error {
 		if p.Closed {
 			return errClosed
 		}
 		if email != "" && p.byEmail(email) != nil {
 			return nil
+		}
+		if choices, okChoices = parseChoices(p, f["choice"]); !okChoices {
+			return errChoice
 		}
 		added = &Answer{Token: rand.Text(), Name: name, Email: email, Lang: lang(r), Choices: choices, Created: s.now()}
 		p.Answers = append(p.Answers, added)
@@ -459,12 +470,12 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if added == nil {
-		http.Redirect(w, r, "/p/"+p.Slug+"/answered", http.StatusSeeOther)
+		http.Redirect(w, r, "/p/"+p.ID+"/answered", http.StatusSeeOther)
 		return
 	}
 	s.mailLink(p, added)
 	s.notifyOwner(p, added, "new")
-	http.Redirect(w, r, "/p/"+p.Slug+"/a/"+added.Token+"/thanks", http.StatusSeeOther)
+	http.Redirect(w, r, "/p/"+p.ID+"/a/"+added.Token+"/thanks", http.StatusSeeOther)
 }
 
 func (s *server) thanks(w http.ResponseWriter, r *http.Request) {
@@ -476,11 +487,11 @@ func (s *server) thanks(w http.ResponseWriter, r *http.Request) {
 	if a.Email == "" {
 		text = "sent.text.nomail"
 	}
-	s.message(w, r, http.StatusOK, "sent.title", text, "/p/"+p.Slug+"/a/"+a.Token, "sent.link")
+	s.message(w, r, http.StatusOK, "sent.title", text, "/p/"+p.ID+"/a/"+a.Token, "sent.link")
 }
 
 func (s *server) removed(w http.ResponseWriter, r *http.Request) {
-	s.message(w, r, http.StatusOK, "removed.title", "removed.text", "/p/"+r.PathValue("slug"), "removed.back")
+	s.message(w, r, http.StatusOK, "removed.title", "removed.text", "/p/"+r.PathValue("id"), "removed.back")
 }
 
 func (s *server) answered(w http.ResponseWriter, r *http.Request) {
@@ -488,7 +499,7 @@ func (s *server) answered(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) lookup(w http.ResponseWriter, r *http.Request) (*Poll, *Answer) {
-	p, err := s.store.get(r.PathValue("slug"))
+	p, err := s.store.get(r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return nil, nil
@@ -518,7 +529,7 @@ func (s *server) answerPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) act(r *http.Request, action string, fn func(p *Poll, a *Answer) error) (*Poll, *Answer, error) {
 	var ans *Answer
-	p, err := s.store.update(r.PathValue("slug"), action, func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("id"), action, func(p *Poll) error {
 		if ans = p.byToken(r.PathValue("token")); ans == nil {
 			return errNotFound
 		}
@@ -528,9 +539,6 @@ func (s *server) act(r *http.Request, action string, fn func(p *Poll, a *Answer)
 }
 
 func (s *server) updateAnswer(w http.ResponseWriter, r *http.Request) {
-	if !s.parseForm(w, r) {
-		return
-	}
 	p, a, err := s.act(r, "answer updated by participant", func(p *Poll, a *Answer) error {
 		if p.Closed {
 			return errClosed
@@ -551,7 +559,7 @@ func (s *server) updateAnswer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	http.Redirect(w, r, "/p/"+p.Slug+"/a/"+a.Token+"?ok=updated", http.StatusSeeOther)
+	http.Redirect(w, r, "/p/"+p.ID+"/a/"+a.Token+"?ok=updated", http.StatusSeeOther)
 }
 
 func (s *server) removeConfirm(w http.ResponseWriter, r *http.Request) {
@@ -579,5 +587,5 @@ func (s *server) removeAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.notifyOwner(p, a, "removed")
-	http.Redirect(w, r, "/p/"+p.Slug+"/removed", http.StatusSeeOther)
+	http.Redirect(w, r, "/p/"+p.ID+"/removed", http.StatusSeeOther)
 }

@@ -20,7 +20,7 @@ type manageFunc func(http.ResponseWriter, *http.Request, mgr)
 
 func (s *server) asOwner(h manageFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p, err := s.store.get(r.PathValue("slug"))
+		p, err := s.store.get(r.PathValue("id"))
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -30,7 +30,7 @@ func (s *server) asOwner(h manageFunc) http.Handler {
 			s.fail(w, r, errNotFound)
 			return
 		}
-		h(w, r, mgr{base: "/p/" + p.Slug + "/m/" + tok, poll: p})
+		h(w, r, mgr{base: "/p/" + p.ID + "/m/" + tok, poll: p})
 	})
 }
 
@@ -48,18 +48,18 @@ func (s *server) manageRoutes(mux *http.ServeMux) {
 		{"GET {base}/delete", s.deleteConfirm},
 		{"POST {base}/delete", s.deletePoll},
 	} {
-		mux.Handle(strings.Replace(rt.pattern, "{base}", "/p/{slug}/m/{token}", 1), s.asOwner(rt.h))
+		mux.Handle(strings.Replace(rt.pattern, "{base}", "/p/{id}/m/{token}", 1), s.asOwner(rt.h))
 	}
-	mux.Handle("GET /p/{slug}/m/{token}/created", s.asOwner(s.created))
+	mux.Handle("GET /p/{id}/m/{token}/created", s.asOwner(s.created))
 }
 
 func (s *server) ownerLink(p *Poll) string {
-	return s.cfg.BaseURL + "/p/" + p.Slug + "/m/" + p.OwnerToken
+	return s.cfg.BaseURL + "/p/" + p.ID + "/m/" + p.OwnerToken
 }
 
 func (s *server) mailOwner(p *Poll) error {
 	return s.mail(p.OwnerEmail, "manage", T(p.OwnerLang, "mail.manage.subject", p.Title),
-		mailData{Lang: p.OwnerLang, Poll: p, Link: s.ownerLink(p), Public: s.cfg.BaseURL + "/p/" + p.Slug}, nil)
+		mailData{Lang: p.OwnerLang, Poll: p, Link: s.ownerLink(p), Public: s.cfg.BaseURL + "/p/" + p.ID}, nil)
 }
 
 func (s *server) adminIndex(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func (s *server) adminIndex(w http.ResponseWriter, r *http.Request) {
 func (s *server) newPage(w http.ResponseWriter, r *http.Request, status int, f url.Values, errKey string) {
 	l := lang(r)
 	s.render(w, r, status, "new", &page{Lang: l, Title: T(l, "admin.new"), Error: errKey, Form: f, Action: "/new", Button: "new.create",
-		Public: true, Challenge: s.pow.issue(), Difficulty: s.cfg.Difficulty})
+		Public: true})
 }
 
 func (s *server) newPoll(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +106,7 @@ func (s *server) pollFromForm(f url.Values) (*Poll, string) {
 
 func (s *server) create(p *Poll) error {
 	for {
-		p.Slug = newID()
+		p.ID = newID()
 		if err := s.store.create(p, "created"); !errors.Is(err, errExists) {
 			return err
 		}
@@ -114,9 +114,6 @@ func (s *server) create(p *Poll) error {
 }
 
 func (s *server) createPoll(w http.ResponseWriter, r *http.Request) {
-	if !s.parseForm(w, r) {
-		return
-	}
 	f := r.PostForm
 	p, errKey := s.pollFromForm(f)
 	name := strings.TrimSpace(f.Get("name"))
@@ -127,8 +124,6 @@ func (s *server) createPoll(w http.ResponseWriter, r *http.Request) {
 		errKey = "err.name"
 	case email != "" && !validEmail(email):
 		errKey = "err.email"
-	case !s.pow.verify(f.Get("pow"), f.Get("nonce")):
-		errKey = "err.pow"
 	}
 	if errKey != "" {
 		s.newPage(w, r, http.StatusBadRequest, f, errKey)
@@ -140,7 +135,7 @@ func (s *server) createPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mailOwner(p)
-	http.Redirect(w, r, "/p/"+p.Slug+"/m/"+p.OwnerToken+"/created", http.StatusSeeOther)
+	http.Redirect(w, r, "/p/"+p.ID+"/m/"+p.OwnerToken+"/created", http.StatusSeeOther)
 }
 
 func (s *server) created(w http.ResponseWriter, r *http.Request, m mgr) {
@@ -169,7 +164,7 @@ func validatePoll(p *Poll) string {
 }
 
 func (s *server) managePoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	p, err := s.store.get(r.PathValue("slug"))
+	p, err := s.store.get(r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -194,12 +189,9 @@ func (s *server) renderManage(w http.ResponseWriter, r *http.Request, status int
 }
 
 func (s *server) manageEdit(w http.ResponseWriter, r *http.Request, m mgr) {
-	if !s.parseForm(w, r) {
-		return
-	}
 	f := r.PostForm
 	var errKey string
-	p, err := s.store.update(r.PathValue("slug"), "edited", func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("id"), "edited", func(p *Poll) error {
 		p.Title = strings.TrimSpace(f.Get("title"))
 		p.Description = strings.TrimSpace(f.Get("description"))
 		if f.Has("options") {
@@ -224,7 +216,7 @@ func (s *server) manageEdit(w http.ResponseWriter, r *http.Request, m mgr) {
 	}
 	if errKey != "" {
 
-		if p, err = s.store.get(r.PathValue("slug")); err == nil {
+		if p, err = s.store.get(r.PathValue("id")); err == nil {
 			s.renderManage(w, r, http.StatusBadRequest, m, p, f, "", errKey)
 			return
 		}
@@ -241,7 +233,7 @@ func (s *server) manageEdit(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) deleteConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
-	p, err := s.store.get(r.PathValue("slug"))
+	p, err := s.store.get(r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -251,7 +243,7 @@ func (s *server) deleteConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) deletePoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	if err := s.store.delete(r.PathValue("slug"), "deleted"); err != nil {
+	if err := s.store.delete(r.PathValue("id"), "deleted"); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -259,7 +251,7 @@ func (s *server) deletePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) closeConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
-	p, err := s.store.get(r.PathValue("slug"))
+	p, err := s.store.get(r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -279,10 +271,7 @@ func (s *server) closeConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	if !s.parseForm(w, r) {
-		return
-	}
-	p, err := s.store.update(r.PathValue("slug"), "closed", func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("id"), "closed", func(p *Poll) error {
 		i, err := strconv.Atoi(r.PostForm.Get("option"))
 		if err != nil || i < 0 || i >= len(p.Options) {
 			return errInvalid
@@ -304,7 +293,7 @@ func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) reopenPoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	_, err := s.store.update(r.PathValue("slug"), "reopened", func(p *Poll) error {
+	_, err := s.store.update(r.PathValue("id"), "reopened", func(p *Poll) error {
 		p.Closed, p.Outcome = false, 0
 		return nil
 	})
@@ -316,10 +305,7 @@ func (s *server) reopenPoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) manageRemove(w http.ResponseWriter, r *http.Request, m mgr) {
-	if !s.parseForm(w, r) {
-		return
-	}
-	_, err := s.store.update(r.PathValue("slug"), "answer removed by owner", func(p *Poll) error {
+	_, err := s.store.update(r.PathValue("id"), "answer removed by owner", func(p *Poll) error {
 		if p.byToken(r.PostForm.Get("token")) == nil {
 			return errNotFound
 		}

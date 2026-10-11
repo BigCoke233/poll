@@ -1,8 +1,7 @@
 {{define "content"}}
 {{template "pollhead" .}}
 {{if not .Poll.Closed}}
-<pow-form difficulty="{{.Difficulty}}" working="{{t .Lang "pow.working"}}">
-<form method="post" action="/p/{{.Poll.Slug}}" class="card">
+<form method="post" action="/p/{{.Poll.ID}}" class="card">
   {{template "notice" .}}
   <fieldset class="choices">
     <legend>{{if .Poll.Multiple}}{{t .Lang "poll.choose.multiple"}}{{else}}{{t .Lang "poll.choose.single"}}{{end}}</legend>
@@ -18,13 +17,10 @@
     <label>{{t .Lang "poll.email.optional"}}<input name="email" type="email" data-key="e" maxlength="254" autocomplete="email" value="{{.Form.Get "email"}}"></label>
   </div>
   <p class="hint">{{t .Lang "poll.hint"}}</p>
-  <input type="hidden" name="pow" value="{{.Challenge}}">
-  <input type="hidden" name="nonce" value="">
   <noscript><p class="error">{{t .Lang "poll.nojs"}}</p></noscript>
   <button type="submit" data-key="s">{{t .Lang "poll.submit"}}</button>
-  <p class="pow-status" role="status" aria-live="polite"></p>
+  <p class="pow-status" data-working="{{t .Lang "pow.working"}}" role="status" aria-live="polite"></p>
 </form>
-</pow-form>
 {{end}}
 {{if .Results}}
 <section aria-labelledby="results-h">

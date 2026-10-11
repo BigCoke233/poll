@@ -66,7 +66,6 @@
 
 {{define "pollform"}}
 {{if .Poll}}<auto-save {{template "autosave-attrs" .}}>{{end}}
-{{if .Public}}<pow-form difficulty="{{.Difficulty}}" working="{{t .Lang "pow.working"}}">{{end}}
 <form method="post" action="{{.Action}}" class="card">
   <label>{{t .Lang "new.title.label"}}<input id="title" name="title" data-key="t" required maxlength="200" value="{{.Form.Get "title"}}"></label>
   <label>{{t .Lang "new.description"}}<textarea name="description" data-key="d" rows="3" maxlength="5000">{{.Form.Get "description"}}</textarea></label>
@@ -98,17 +97,14 @@
     </div>
     <p class="hint">{{t .Lang "new.creator.hint"}}</p>
   </fieldset>
-  <input type="hidden" name="pow" value="{{.Challenge}}">
-  <input type="hidden" name="nonce" value="">
   <noscript><p class="error">{{t .Lang "poll.nojs"}}</p></noscript>
   {{end}}
   <div class="actions">
     <button type="submit" data-key="s"{{if .Poll}} data-autosave-hide{{end}}>{{t .Lang .Button}}</button>
     <p class="autosave" data-autosave-status role="status" aria-live="polite"></p>
   </div>
-  {{if .Public}}<p class="pow-status" role="status" aria-live="polite"></p>{{end}}
+  {{if .Public}}<p class="pow-status" data-working="{{t .Lang "pow.working"}}" role="status" aria-live="polite"></p>{{end}}
 </form>
-{{if .Public}}</pow-form>{{end}}
 {{if .Poll}}</auto-save>{{end}}
 {{end}}
 

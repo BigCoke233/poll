@@ -4,7 +4,7 @@ customElements.define('auto-save', class extends HTMLElement {
     const form = this.querySelector('form');
     const status = this.querySelector('[data-autosave-status]');
     const say = (state, text) => { status.dataset.state = state; status.textContent = text ?? this.getAttribute(state) ?? ''; };
-    let timer = null, chain = Promise.resolve();
+    let timer = null, chain = Promise.resolve(), next = proof();
     const save = (keepalive = false) => {
       clearTimeout(timer);
       timer = null;
@@ -13,10 +13,14 @@ customElements.define('auto-save', class extends HTMLElement {
         if (bad) { say('error', bad.validationMessage); return; }
         say('saving');
         try {
-          const res = await fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)), headers: { 'X-Autosave': '1' }, keepalive });
+          const body = new URLSearchParams(new FormData(form));
+          const p = await next;
+          next = proof();
+          for (const k in p) body.set(k, p[k]);
+          const res = await fetch(form.action, { method: 'POST', body, headers: { 'X-Autosave': '1' }, keepalive });
           if (res.ok) say('saved', `${this.getAttribute('saved')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
           else say('error', (await res.text()).trim());
-        } catch { say('error', this.getAttribute('failed')); }
+        } catch { next = proof(); say('error', this.getAttribute('failed')); }
       });
     };
     const schedule = (e) => {
@@ -75,24 +79,30 @@ async function solve(challenge, bits) {
   }
 }
 
-customElements.define('pow-form', class extends HTMLElement {
-  connectedCallback() {
-    const form = this.querySelector('form');
-    const status = this.querySelector('.pow-status');
-    let busy = false;
-    form.addEventListener('submit', async (e) => {
-      if (form.elements.nonce.value) return;
-      e.preventDefault();
-      if (busy) return;
-      busy = true;
-      form.querySelector('[type=submit]').disabled = true;
-      status.textContent = this.getAttribute('working');
-      const t0 = performance.now();
-      form.elements.nonce.value = await solve(form.elements.pow.value, +this.getAttribute('difficulty'));
-      console.debug(`pow solved in ${Math.round(performance.now() - t0)} ms`);
-      form.submit();
-    });
+async function proof() {
+  const [bits, pow] = (await (await fetch('/pow')).text()).split(' ');
+  return { pow, nonce: await solve(pow, +bits) };
+}
+
+document.addEventListener('submit', async (e) => {
+  const form = e.target;
+  if (form.method !== 'post') return;
+  if (form.dataset.proved) { delete form.dataset.proved; return; }
+  e.preventDefault();
+  if (form.dataset.busy) return;
+  form.dataset.busy = 1;
+  const status = form.querySelector('.pow-status');
+  if (status) status.textContent = status.dataset.working;
+  try {
+    const p = await proof();
+    form.querySelectorAll('[data-pow]').forEach((el) => el.remove());
+    for (const k in p) form.insertAdjacentHTML('beforeend', `<input type="hidden" name="${k}" value="${p[k]}" data-pow>`);
+    form.dataset.proved = 1;
+  } finally {
+    delete form.dataset.busy;
+    if (status) status.textContent = '';
   }
+  form.requestSubmit(e.submitter);
 });
 
 const typing = (el) => el instanceof Element && el.matches('input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset]), textarea, select, [contenteditable]');

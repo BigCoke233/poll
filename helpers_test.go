@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewID(t *testing.T) {
-	if a, b := newID(), newID(); a == b || len(a) != 16 || !validSlug(a) || strings.ContainsAny(a, "0189") {
+	if a, b := newID(), newID(); a == b || len(a) != 16 || !validID(a) || strings.ContainsAny(a, "0189") {
 		t.Fatalf("newID: %q %q", a, b)
 	}
 }

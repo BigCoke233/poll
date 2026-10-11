@@ -27,7 +27,7 @@ shots() {
 }
 
 shoot() {
-	local theme=$1 slug=${polls[$1]%:*} outcome=${polls[$1]#*:} base="http://admin:admin@localhost:$port"
+	local theme=$1 id=${polls[$1]%:*} outcome=${polls[$1]#*:} base="http://admin:admin@localhost:$port"
 	mkdir -p "$tmp/$theme/data/polls" "$out/$theme" && cp seed/*.json "$tmp/$theme/data/polls/"
 	(cd "$tmp/$theme" && exec env -i PATH="$PATH" BASE_URL=http://localhost:8737 ADMIN_PASSWORD=admin \
 		SMTP_URL=smtp+insecure://localhost:1025 SMTP_FROM=poll@example.com \
@@ -37,11 +37,11 @@ shoot() {
 		kill -0 "$pid" 2>/dev/null || { echo "screenshots: $theme server died:" >&2; cat "$tmp/$theme.log" >&2; exit 1; }
 		sleep .1
 	done
-	local token=$(grep -o '"token": "[A-Z2-7]*"' "seed/$slug.json" | head -1 | cut -d'"' -f4)
-	local manage=/p/$slug/m/$(grep -o '"owner_token": "[A-Z2-7]*"' "seed/$slug.json" | cut -d'"' -f4)
-	shots start=/ new=/new poll=/p/$slug answer=/p/$slug/a/$token admin=/a manage=$manage
-	curl -sf -o /dev/null -d option=$outcome "$base$manage/close"
-	shots closed=/p/$slug
+	local token=$(grep -o '"token": "[A-Z2-7]*"' "seed/$id.json" | head -1 | cut -d'"' -f4)
+	local manage=/p/$id/m/$(grep -o '"owner_token": "[A-Z2-7]*"' "seed/$id.json" | cut -d'"' -f4)
+	shots start=/ new=/new poll=/p/$id answer=/p/$id/a/$token admin=/a manage=$manage
+	sed -i "s/\"closed\": false/\"closed\": true/; s/\"outcome\": [0-9]*/\"outcome\": $outcome/" "$tmp/$theme/data/polls/$id.json"
+	shots closed=/p/$id
 	if command -v magick >/dev/null; then
 		local p="$out/$theme/poll"
 		magick "$p-desktop-light.png" "$p-desktop-dark.png" "$p-phone-light.png" "$p-phone-dark.png" \

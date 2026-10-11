@@ -11,8 +11,8 @@
   <p class="meta">{{t .Lang "manage.note"}}</p>
   {{if .Poll.Closed}}<form method="post" action="{{.Base}}/reopen"><button type="submit" class="secondary" data-key="o">{{t .Lang "admin.reopen"}}</button></form>{{end}}
   <div class="share">
-    <input readonly value="{{.BaseURL}}/p/{{.Poll.Slug}}" aria-label="{{t .Lang "admin.publiclink"}}">
-    <copy-link text="{{.BaseURL}}/p/{{.Poll.Slug}}" copied="{{t .Lang "admin.copied"}}"><button type="button" class="secondary" data-key="c">{{t .Lang "admin.copy"}}</button></copy-link>
+    <input readonly value="{{.BaseURL}}/p/{{.Poll.ID}}" aria-label="{{t .Lang "admin.publiclink"}}">
+    <copy-link text="{{.BaseURL}}/p/{{.Poll.ID}}" copied="{{t .Lang "admin.copied"}}"><button type="button" class="secondary" data-key="c">{{t .Lang "admin.copy"}}</button></copy-link>
   </div>
 </div>
 
@@ -40,9 +40,9 @@
   {{range $a := .Poll.Answers}}
   <div popover id="p-{{$a.Token}}" class="pop">
             <p><strong>{{$a.Name}}</strong></p>
-            <input readonly value="{{$.BaseURL}}/p/{{$.Poll.Slug}}/a/{{$a.Token}}" aria-label="{{t $.Lang "admin.link"}}">
+            <input readonly value="{{$.BaseURL}}/p/{{$.Poll.ID}}/a/{{$a.Token}}" aria-label="{{t $.Lang "admin.link"}}">
             <div class="actions">
-              <copy-link text="{{$.BaseURL}}/p/{{$.Poll.Slug}}/a/{{$a.Token}}" copied="{{t $.Lang "admin.copied"}}"><button type="button" class="secondary">{{t $.Lang "admin.copy"}}</button></copy-link>
+              <copy-link text="{{$.BaseURL}}/p/{{$.Poll.ID}}/a/{{$a.Token}}" copied="{{t $.Lang "admin.copied"}}"><button type="button" class="secondary">{{t $.Lang "admin.copy"}}</button></copy-link>
               <form method="post" action="{{$.Base}}/remove"><input type="hidden" name="token" value="{{$a.Token}}"><button type="submit" class="danger">{{t $.Lang "admin.remove"}}</button></form>
             </div>
           </div>

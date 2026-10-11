@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-var slugRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
+var idRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
-func validSlug(s string) bool { return slugRe.MatchString(s) }
+func validID(s string) bool { return idRe.MatchString(s) }
 
 func newID() string { return strings.ToLower(rand.Text()[:16]) }
 
