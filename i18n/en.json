@@ -28,7 +28,7 @@
   "answer.picked": "your choice",
   "answer.remove": "Remove my answer",
   "answer.update": "Update my answer",
-  "answer.yours": "Your answer, %s",
+  "answer.yours": "%s's answer",
   "autosave.failed": "Couldn't save. Check your connection, it retries on your next change.",
   "autosave.saved": "Saved",
   "autosave.saving": "Saving…",

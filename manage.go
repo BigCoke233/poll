@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type mgr struct {
@@ -70,7 +71,7 @@ func (s *server) adminIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l := lang(r)
-	s.render(w, r, http.StatusOK, "admin", &page{Lang: l, Title: T(l, "admin.title"), Polls: polls})
+	s.render(w, r, http.StatusOK, "admin", &page{Lang: l, Title: T(l, "admin.title"), Polls: polls, Notice: deletedNotice(r)})
 }
 
 func (s *server) newPage(w http.ResponseWriter, r *http.Request, status int, f url.Values, errKey string) {
@@ -121,7 +122,7 @@ func (s *server) createPoll(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(f.Get("email")))
 	switch {
 	case errKey != "":
-	case name == "" || len(name) > 100:
+	case name == "" || utf8.RuneCountInString(name) > 100:
 		errKey = "err.name"
 	case email != "" && !validEmail(email):
 		errKey = "err.email"
@@ -149,15 +150,15 @@ func (s *server) created(w http.ResponseWriter, r *http.Request, m mgr) {
 
 func validatePoll(p *Poll) string {
 	switch {
-	case p.Title == "" || len(p.Title) > 200:
+	case p.Title == "" || utf8.RuneCountInString(p.Title) > 200:
 		return "err.title"
-	case len(p.Description) > 5000:
+	case utf8.RuneCountInString(p.Description) > 5000:
 		return "err.description"
 	case len(p.Options) == 0 || len(p.Options) > 100:
 		return "err.options"
 	}
 	for _, o := range p.Options {
-		if len(o.Text) > 200 {
+		if utf8.RuneCountInString(o.Text) > 200 {
 			return "err.options"
 		}
 	}
@@ -248,7 +249,14 @@ func (s *server) deletePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 		s.fail(w, r, err)
 		return
 	}
-	s.message(w, r, http.StatusOK, "done.title", "notice.deleted", "", "")
+	switch {
+	case s.isAdmin(r):
+		http.Redirect(w, r, "/a?ok=deleted", http.StatusSeeOther)
+	case s.cfg.PublicCreate:
+		http.Redirect(w, r, "/?ok=deleted", http.StatusSeeOther)
+	default:
+		s.message(w, r, http.StatusOK, "done.title", "notice.deleted", "", "")
+	}
 }
 
 func (s *server) closeConfirm(w http.ResponseWriter, r *http.Request, m mgr) {

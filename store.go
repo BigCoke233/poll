@@ -39,10 +39,8 @@ type Answer struct {
 
 func (a *Answer) Chose(i int) bool { return slices.Contains(a.Choices, i) }
 
-// String describes an answer for the log, without email or token.
 func (a *Answer) String() string { return fmt.Sprintf("%q choices %v", a.Name, a.Choices) }
 
-// None lists the answers that picked no option.
 func (p *Poll) None() (as []*Answer) {
 	for _, a := range p.Answers {
 		if len(a.Choices) == 0 {
@@ -170,7 +168,6 @@ func (s *store) get(id string) (*Poll, error) {
 	return s.read(id)
 }
 
-// update applies fn and logs the action it returns.
 func (s *store) update(id string, fn func(*Poll) (string, error)) (*Poll, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

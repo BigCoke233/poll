@@ -48,6 +48,8 @@
 body { margin: 0; background: var(--bg); color: var(--fg); -webkit-text-size-adjust: 100%; overflow-wrap: break-word; }
 
 main, .foot { max-width: 52rem; margin: 0 auto; padding-inline: var(--gutter); }
+.langs { max-width: 52rem; margin: 0 auto; padding: 1rem var(--gutter) 0; text-align: right; font-size: .8rem; color: var(--lo); }
+.langs a { font-weight: 400; text-decoration: none; color: var(--lo); &[aria-current] { color: var(--fg); font-weight: 700; } }
 
 main { padding-block: clamp(3rem, 10vw, 6rem) clamp(4rem, 10vw, 6rem); display: grid; gap: clamp(3rem, 8vw, 4.5rem); animation: rise .35s var(--ease) both; }
 main > * { min-width: 0; }
@@ -192,7 +194,9 @@ form > :is(label, .fields) + .hint { margin-top: calc(1.25rem - var(--gap)); }
   border-bottom: var(--rule);
   display: grid; gap: .6rem;
   &.chosen .result-head span:first-child { color: var(--mark); }
+  &.chosen { box-shadow: inset 4px 0 0 var(--mark); padding-inline-start: 1rem; }
 }
+.results:has(> .chosen) > li:not(.chosen) { opacity: .45; }
 .result-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; font-weight: 700; }
 .count { font-variant-numeric: tabular-nums; }
 
@@ -205,7 +209,7 @@ meter::-webkit-meter-optimum-value { background: var(--fg); border-radius: 0; tr
 meter::-moz-meter-bar { background: var(--fg); }
 .lead meter::-webkit-meter-optimum-value, .chosen meter::-webkit-meter-optimum-value { background: var(--mark); }
 .lead meter::-moz-meter-bar, .chosen meter::-moz-meter-bar { background: var(--mark); }
-.lead .count { color: var(--mark); }
+.lead .count, .chosen .count { color: var(--mark); }
 
 .names { display: flex; flex-wrap: wrap; gap: .2rem .5rem; color: var(--lo); font-size: .85rem; }
 .names li + li::before { content: "·"; margin-inline-end: .5rem; }

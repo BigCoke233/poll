@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"path"
@@ -22,6 +23,7 @@ import (
 	"sync"
 	ttemplate "text/template"
 	"time"
+	"unicode/utf8"
 )
 
 //go:embed templates mail static i18n
@@ -75,6 +77,7 @@ func newServer(cfg config, now func() time.Time, send func(Mail) error) (*server
 		"inc":     func(i int) int { return i + 1 },
 		"list":    func(s ...string) []string { return s },
 		"version": version,
+		"langs":   func() []string { return slices.Sorted(maps.Keys(messages)) },
 	}
 	files, _ := fs.Glob(assets, "templates/*.html")
 	for _, f := range files {
@@ -104,7 +107,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.PublicCreate {
 			l := lang(r)
-			s.render(w, r, http.StatusOK, "home", &page{Lang: l})
+			s.render(w, r, http.StatusOK, "home", &page{Lang: l, Notice: deletedNotice(r)})
 			return
 		}
 		http.Redirect(w, r, "/a", http.StatusSeeOther)
@@ -128,6 +131,13 @@ func (s *server) handler() http.Handler {
 	admin("GET /a", s.adminIndex)
 	s.manageRoutes(mux)
 	return s.headers(http.NewCrossOriginProtection().Handler(s.proved(mux)))
+}
+
+func deletedNotice(r *http.Request) string {
+	if r.URL.Query().Get("ok") == "deleted" {
+		return "deleted"
+	}
+	return ""
 }
 
 func (s *server) proved(next http.Handler) http.Handler {
@@ -161,12 +171,16 @@ func (s *server) headers(next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) auth(next http.Handler) http.Handler {
+func (s *server) isAdmin(r *http.Request) bool {
 	want := sha256.Sum256([]byte("admin\x00" + s.cfg.AdminPassword))
+	u, p, ok := r.BasicAuth()
+	got := sha256.Sum256([]byte(u + "\x00" + p))
+	return ok && subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+func (s *server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p, ok := r.BasicAuth()
-		got := sha256.Sum256([]byte(u + "\x00" + p))
-		if !ok || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		if !s.isAdmin(r) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="][/poll", charset="UTF-8"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -268,7 +282,12 @@ type page struct {
 	LinkText string
 }
 
-func lang(r *http.Request) string { return detectLang(r.Header.Get("Accept-Language")) }
+func lang(r *http.Request) string {
+	if l := r.URL.Query().Get("lang"); messages[l] != nil {
+		return l
+	}
+	return detectLang(r.Header.Get("Accept-Language"))
+}
 
 func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name string, p *page) {
 	if p.Lang == "" {
@@ -312,7 +331,7 @@ func (s *server) message(w http.ResponseWriter, r *http.Request, status int, tit
 	}
 	pg := &page{Lang: l, Title: T(l, title), Text: text, Link: link, LinkText: linkText}
 	if p, err := s.store.get(r.PathValue("id")); err == nil {
-		pg.Theme = p.Theme // pages about a poll keep its look
+		pg.Theme = p.Theme
 	}
 	s.render(w, r, status, "message", pg)
 }
@@ -439,7 +458,7 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 	case p.Closed:
 		s.fail(w, r, errClosed)
 		return
-	case name == "" || len(name) > 100:
+	case name == "" || utf8.RuneCountInString(name) > 100:
 		errKey = "err.name"
 	case email != "" && !validEmail(email):
 		errKey = "err.email"

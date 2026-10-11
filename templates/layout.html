@@ -10,6 +10,7 @@
 <script type="module" src="/static/app.js"></script>
 </head>
 <body>
+<nav class="langs" aria-label="Language">{{range $i, $l := langs}}{{if $i}} | {{end}}<a href="?lang={{$l}}" hreflang="{{$l}}"{{if eq $l $.Lang}} aria-current="true"{{end}}>{{$l}}</a>{{end}}</nav>
 <main>
 {{template "content" .}}
 </main>

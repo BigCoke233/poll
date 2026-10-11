@@ -90,6 +90,7 @@ document.addEventListener('submit', async (e) => {
   if (form.dataset.proved) { delete form.dataset.proved; return; }
   e.preventDefault();
   if (form.dataset.busy) return;
+  if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
   form.dataset.busy = 1;
   const status = form.querySelector('.pow-status');
   if (status) status.textContent = status.dataset.working;
@@ -143,4 +144,18 @@ for (const el of document.querySelectorAll('[data-key]')) {
   if (el.matches('fieldset')) el.querySelector('legend').append(' ', kbd);
   else if (el.matches('input, textarea, select')) el.closest('label').append(kbd);
   else el.append(kbd);
+}
+
+const store = { get: () => { try { return localStorage.getItem('lang'); } catch { return null; } },
+                set: (l) => { try { localStorage.setItem('lang', l); } catch {} } };
+document.querySelectorAll('.langs a').forEach((a) => a.addEventListener('click', () => store.set(a.hreflang)));
+const wanted = store.get();
+const here = new URL(location.href);
+if (wanted && wanted !== document.documentElement.lang && !here.searchParams.has('lang')) {
+  here.searchParams.set('lang', wanted);
+  location.replace(here);
+} else if (wanted) {
+  const withLang = (url) => { const u = new URL(url, location.href); if (u.origin !== location.origin) return null; u.searchParams.set('lang', wanted); return u.href; };
+  document.querySelectorAll('a[href]:not(.langs a)').forEach((a) => { const u = withLang(a.getAttribute('href')); if (u) a.href = u; });
+  document.querySelectorAll('form[action]').forEach((f) => { const u = withLang(f.getAttribute('action')); if (u) f.action = u; });
 }

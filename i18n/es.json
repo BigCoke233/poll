@@ -28,7 +28,7 @@
   "answer.picked": "tu elección",
   "answer.remove": "Eliminar mi respuesta",
   "answer.update": "Actualizar mi respuesta",
-  "answer.yours": "Tu respuesta, %s",
+  "answer.yours": "Respuesta de %s",
   "autosave.failed": "No se pudo guardar. Revisa tu conexión, se reintentará con tu próximo cambio.",
   "autosave.saved": "Guardado",
   "autosave.saving": "Guardando…",

@@ -539,7 +539,7 @@ func TestPublicCreation(t *testing.T) {
 	if r := e.post(manage+"/close", url.Values{"option": {"2"}}); r.status != 303 || !e.poll("lunch").Closed {
 		t.Fatalf("creator close: %d", r.status)
 	}
-	if r := e.post(manage+"/delete", url.Values{}); r.status != 200 {
+	if r := e.post(manage+"/delete", url.Values{}); r.status != 303 {
 		t.Fatalf("creator delete: %d", r.status)
 	}
 	if r := e.get(manage); r.status != 404 {
@@ -732,6 +732,25 @@ func TestAnsweringWithNoOption(t *testing.T) {
 	}
 }
 
+func TestLimitsCountCharacters(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, true)
+	if r := e.post("/p/dinner", url.Values{"name": {strings.Repeat("ä", 100)}, "choice": {"0"}}); r.status != 303 {
+		t.Fatalf("100 umlauts are 100 characters: %d", r.status)
+	}
+	if r := e.post("/p/dinner", url.Values{"name": {strings.Repeat("ä", 101)}, "choice": {"0"}}); r.status != 400 {
+		t.Fatalf("101 characters must be rejected: %d", r.status)
+	}
+	ok := &Poll{Title: strings.Repeat("ü", 200), Options: []Option{{Text: strings.Repeat("ö", 200)}}}
+	if k := validatePoll(ok); k != "" {
+		t.Fatalf("200 characters must fit: %s", k)
+	}
+	ok.Options[0].Text += "ö"
+	if validatePoll(ok) != "err.options" {
+		t.Fatal("201 characters per option must be rejected")
+	}
+}
+
 func TestCreatingWithoutEmail(t *testing.T) {
 	e := newEnv(t)
 	f := url.Values{"title": {"T"}, "options": {opts}, "name": {"Owner"}}
@@ -865,6 +884,42 @@ func TestAdmin(t *testing.T) {
 	}
 	if _, err := e.srv.store.get("dinner"); err != errNotFound || e.get(l).status != 404 || e.post(m+"/delete", url.Values{}).status != 404 {
 		t.Fatal("poll or participant link survives deletion")
+	}
+}
+
+func TestDeleteRedirect(t *testing.T) {
+	deleted := T("en", "notice.deleted")
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, false)
+	if r := e.adminGet("/a").body; !strings.Contains(r, `action="`+e.manage("dinner")+`/delete" data-confirm="`) {
+		t.Fatal("admin list must offer delete with a confirmation")
+	}
+	if r := e.adminPost(e.manage("dinner")+"/delete", url.Values{}); r.header.Get("Location") != "/a?ok=deleted" || !strings.Contains(e.adminGet("/a?ok=deleted").body, deleted) {
+		t.Fatalf("admin must land on the admin page: %q", r.header.Get("Location"))
+	}
+
+	e = newEnv(t, func(c *config) { c.PublicCreate = true })
+	e.createPoll("dinner", opts, false, false)
+	if r := e.post(e.manage("dinner")+"/delete", url.Values{}); r.header.Get("Location") != "/?ok=deleted" || !strings.Contains(e.follow(r).body, deleted) {
+		t.Fatalf("owner must land on the start page: %q", r.header.Get("Location"))
+	}
+	if strings.Contains(e.get("/").body, deleted) {
+		t.Fatal("start page shows the notice only after a deletion")
+	}
+}
+
+func TestLanguageSwitch(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, false)
+	r := e.get("/p/dinner?lang=de")
+	if !strings.Contains(r.body, `<html lang="de">`) || !strings.Contains(r.body, `aria-current="true">de</a>`) || r.header.Get("Set-Cookie") != "" {
+		t.Fatal("?lang=de must switch, without a cookie")
+	}
+	if r := e.get("/p/dinner?lang=xx"); !strings.Contains(r.body, `<html lang="en">`) {
+		t.Fatal("unknown languages are ignored")
+	}
+	if got := T("en", "answer.yours", "Ken"); got != "Ken's answer" {
+		t.Fatalf("answer heading: %q", got)
 	}
 }
 
