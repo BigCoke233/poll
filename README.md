@@ -17,7 +17,7 @@ A minimal alternative to Doodle: born out of frustration with Doodle's ongoing e
 - Public poll creation can be switched off (admin only)
 - Easy [theming](#theming)
 - Light and dark mode, following the system setting
-- [Translations](#translations) (English, German), picked from the browser language
+- [Translations](#translations) (English, German, French, Spanish), picked from the browser language
 
 ## Non-features
 
@@ -102,8 +102,8 @@ services:
 
 ## Translations
 
-- All texts, including mails, are in [`i18n/`](i18n): `en.json`, `de.json`
-- Add a language: copy `en.json` to `<code>.json` (e.g. `fr.json`), translate the values (keep keys and `%s` placeholders), rebuild
+- All texts, including mails, are in [`i18n/`](i18n): `en.json`, `de.json`, `fr.json`, `es.json`
+- Add a language: copy `en.json` to `<code>.json` (e.g. `it.json`), translate the values (keep keys and `%s` placeholders), rebuild
 - The language comes from the browser's `Accept-Language`, English is the fallback
 - Mails use the language a participant had when they answered
 - `make test` fails if a file is missing a key or has extra ones
