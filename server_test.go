@@ -628,6 +628,16 @@ func TestPowEverywhere(t *testing.T) {
 	}
 }
 
+func TestPageTitle(t *testing.T) {
+	e := newEnv(t, func(c *config) { c.PublicCreate = true })
+	e.createPoll("dinner", opts, true, false)
+	for path, want := range map[string]string{"/": "<title>][✓</title>", "/new": "<title>][✓</title>", "/p/dinner": "<title>][✓ · Team Dinner Ü</title>", e.manage("dinner"): "<title>][✓ · Team Dinner Ü</title>"} {
+		if !strings.Contains(e.get(path).body, want) {
+			t.Errorf("%s: want %s", path, want)
+		}
+	}
+}
+
 func TestSubmitRevalidatesUnderLock(t *testing.T) {
 	e := newEnv(t)
 	e.createPoll("dinner", opts, false, false)

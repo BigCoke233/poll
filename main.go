@@ -37,14 +37,8 @@ func loadConfig() (config, error) {
 		Theme:         cmp.Or(os.Getenv("THEME"), "minimal"),
 		SMTP:          smtpConfig{From: req("SMTP_FROM")},
 	}
-	u, err := url.Parse(s.BaseURL)
-	local := err == nil && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
-	if s.BaseURL != "" {
-		if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && local)) {
-			bad("BASE_URL must be an https URL (plain http only for localhost), got %q", s.BaseURL)
-		}
-	}
 	if v := os.Getenv("PUBLIC_CREATE"); v != "" {
+		var err error
 		if s.PublicCreate, err = strconv.ParseBool(v); err != nil {
 			bad("PUBLIC_CREATE must be true or false, got %q", v)
 		}
@@ -77,10 +71,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid config:\n%v", err)
 	}
-	if cfg.SMTP.TLS == "none" {
-		log.Print("WARNING: SMTP_URL is smtp+insecure, mail is sent unencrypted. Use only for local testing.")
-	}
-
 	if err := cfg.SMTP.check(); err != nil {
 		log.Fatalf("SMTP check failed (%s, %s, auth: %v): %v", cfg.SMTP.Addr, cfg.SMTP.TLS, cfg.SMTP.User != "", err)
 	}

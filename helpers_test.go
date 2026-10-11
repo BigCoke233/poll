@@ -161,11 +161,10 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("smtp+insecure means no TLS: %v %+v", err, s.SMTP)
 	}
 	t.Setenv("THEME", "rainbow")
-	t.Setenv("BASE_URL", "http://poll.example")
 	t.Setenv("SMTP_FROM", "nope")
 	t.Setenv("SMTP_URL", "smtps://secret@mail.example")
 	_, err = loadConfig()
-	for _, want := range []string{"BASE_URL", "SMTP_FROM", "SMTP_URL", "THEME must be one of business, elegant, fun, minimal"} {
+	for _, want := range []string{"SMTP_FROM", "SMTP_URL", "THEME must be one of business, elegant, fun, minimal"} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("want error about %s, got %v", want, err)
 		}

@@ -100,7 +100,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.PublicCreate {
 			l := lang(r)
-			s.render(w, r, http.StatusOK, "home", &page{Lang: l, Title: T(l, "home.short")})
+			s.render(w, r, http.StatusOK, "home", &page{Lang: l})
 			return
 		}
 		http.Redirect(w, r, "/a", http.StatusSeeOther)
@@ -399,7 +399,7 @@ func (s *server) pollPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	pg := &page{Title: p.Title, Poll: p}
+	pg := &page{Poll: p}
 	if p.ResultsVisible {
 		pg.Results = results(p)
 	}
@@ -443,7 +443,7 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 		errKey = "err.choice"
 	}
 	if errKey != "" {
-		pg := &page{Title: p.Title, Poll: p, Error: errKey, Form: f}
+		pg := &page{Poll: p, Error: errKey, Form: f}
 		if p.ResultsVisible {
 			pg.Results = results(p)
 		}
@@ -517,7 +517,7 @@ func (s *server) answerPage(w http.ResponseWriter, r *http.Request) {
 	if a == nil {
 		return
 	}
-	pg := &page{Title: p.Title, Poll: p, Answer: a}
+	pg := &page{Poll: p, Answer: a}
 	if r.URL.Query().Get("ok") == "updated" {
 		pg.Notice = "saved"
 	}
@@ -571,7 +571,7 @@ func (s *server) removeConfirm(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, errClosed)
 		return
 	}
-	s.render(w, r, http.StatusOK, "confirm", &page{Title: p.Title, Poll: p, Text: "remove.text", Action: s.answerLink(p, a) + "/remove", Button: "remove.button", Link: s.answerLink(p, a), LinkText: "remove.cancel"})
+	s.render(w, r, http.StatusOK, "confirm", &page{Poll: p, Text: "remove.text", Action: s.answerLink(p, a) + "/remove", Button: "remove.button", Link: s.answerLink(p, a), LinkText: "remove.cancel"})
 }
 
 func (s *server) removeAnswer(w http.ResponseWriter, r *http.Request) {

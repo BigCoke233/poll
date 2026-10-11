@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>{{.Title}} · ][/poll</title>
+<title>][✓{{with .Poll}} · {{.Title}}{{end}}</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/theme.css{{with .Theme}}?theme={{.}}{{end}}" data-theme-css>
 <script type="module" src="/static/app.js"></script>
@@ -14,7 +14,7 @@
 {{template "content" .}}
 </main>
 <footer class="foot">
-  {{with .Home}}<a class="home logo" href="{{.}}"><b>][</b>/poll</a>{{else}}<span class="logo"><b>][</b>/poll</span>{{end}}
+  {{with .Home}}<a class="home logo" href="{{.}}"><b>][✓</b> nobloat/poll</a>{{else}}<span class="logo"><b>][✓</b> nobloat/poll</span>{{end}}
   <p>{{t .Lang "footer.by"}} <a href="https://spiessknafl.at/peter" rel="noopener">cinemast</a> ·
   <a href="https://zeitkapsl.eu" rel="noopener">zeitkapsl.eu</a> ·
   <a href="https://hardcode.at" rel="noopener">hardcode.at</a> ·

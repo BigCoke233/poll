@@ -77,8 +77,8 @@ a {
 @media (max-width: 34rem) { .poll-head { grid-template-columns: 1fr; } .poll-head .stamp { justify-self: start; margin-left: .3rem; } }
 
 .card { background: var(--raise); border: var(--bw) solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
-.card { padding: clamp(1.5rem, 5vw, 2.75rem); display: grid; gap: 2.25rem; }
-.card form, form.card { display: grid; gap: 2.25rem; }
+.card { --gap: 2.25rem; padding: clamp(1.5rem, 5vw, 2.75rem); display: grid; gap: var(--gap); }
+.card form, form.card { display: grid; gap: var(--gap); }
 
 label { display: grid; gap: .5rem; font-weight: 700; font-size: .9rem; }
 
@@ -129,7 +129,7 @@ input:is([type=checkbox], [type=radio]):checked { animation: mark .15s var(--eas
   &:has(input:checked) { font-weight: 700; }
 }
 
-.fields { display: grid; gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.fields { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
 
 button, .button {
   font: inherit; font-weight: var(--btn-weight); font-size: .9rem; line-height: 1;
@@ -161,6 +161,8 @@ a.danger { color: var(--danger); }
 .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
 .share { display: flex; gap: .75rem; input { flex: 1; min-width: 0; } }
 .hint, .meta, .empty { color: var(--lo); font-size: .85rem; }
+fieldset > .hint { margin-top: 1.25rem; }
+form > :is(label, .fields) + .hint { margin-top: calc(1.25rem - var(--gap)); }
 
 .feedback:empty { display: none; }
 .error, .notice { padding: .9rem 1.1rem; border: var(--bw) solid; border-radius: var(--radius); animation: pop .25s var(--ease) both; }
@@ -186,7 +188,7 @@ a.danger { color: var(--danger); }
 
 .results, .mine, .polls, .names { list-style: none; margin: 0; padding: 0; }
 .results > li {
-  padding: 1.2rem .3rem;
+  padding: 1.25rem 0;
   border-bottom: var(--rule);
   display: grid; gap: .6rem;
   &.chosen .result-head span:first-child { color: var(--mark); }
@@ -212,8 +214,7 @@ meter::-moz-meter-bar { background: var(--fg); }
 .mine li.picked { color: var(--fg); font-weight: 700; }
 .mark { color: var(--mark); }
 
-.polls { list-style: ">"; padding-left: 1rem; }
-.polls li { padding: .9rem 0 .9rem .75rem; display: grid; gap: .3rem; }
+.polls li { padding: 1.25rem 0; border-bottom: var(--rule); display: grid; gap: .6rem; }
 .share-line { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .75rem; font-size: .85rem; }
 .share-line .url { font-weight: 400; overflow-wrap: anywhere; }
 
@@ -223,28 +224,28 @@ meter::-moz-meter-bar { background: var(--fg); }
 .autosave[data-state=saved]::before { content: "✓ "; color: var(--mark); }
 .autosave[data-state=error] { color: var(--danger); }
 .autosave[data-state=error]::before { content: "! "; }
-auto-save:defined [data-autosave-hide] { display: none; }
+auto-save:defined [data-autosave-hide], .actions .autosave:empty { display: none; }
 .confirm .detail { font-size: 1.25rem; font-weight: 700; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-.home-head { display: grid; gap: 1.25rem; }
+.stack { display: grid; gap: 1rem; }
 .home-head h1 { font-size: clamp(1.8rem, 6vw, 2.8rem); }
 .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
 .steps li {
   counter-increment: step;
   display: grid; grid-template-columns: 2.5rem 1fr; gap: .4rem 1rem;
-  padding: 1.5rem .3rem; border-bottom: var(--rule);
+  padding: 1.25rem 0; border-bottom: var(--rule);
   &::before { content: counter(step, decimal-leading-zero); grid-row: span 2; color: var(--mark); font-weight: 700; }
   h2 { margin: 0; font-size: 1.05rem; &::before { content: none; } }
   p { color: var(--lo); }
 }
 
-.admin-bar { display: grid; gap: 1.1rem; }
-.by-option ~ .hint { margin-top: 1.5rem; }
+.admin-bar { display: grid; gap: 1.25rem; }
+.by-option ~ .hint { margin-top: 1.25rem; }
 .by-option .results > li { grid-template-columns: 2rem 1fr; align-items: start; gap: .8rem; }
 .by-option .num { color: var(--lo); font-size: .85rem; padding-top: .1rem; }
-.by-option .body { display: grid; gap: .55rem; min-width: 0; }
+.by-option .body { display: grid; gap: .6rem; min-width: 0; }
 .by-option .row-foot { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem 1rem; flex-wrap: wrap; }
 .by-option .pick { font-size: .85rem; margin-left: auto; }
 .names .person {
@@ -262,7 +263,7 @@ auto-save:defined [data-autosave-hide] { display: none; }
   &::backdrop { background: color-mix(in oklab, var(--bg) 60%, transparent); }
 }
 .danger-zone { margin-top: 2.25rem; text-align: right; font-size: .85rem; }
-.locked { display: grid; gap: .9rem; }
+.locked { display: grid; gap: 1rem; }
 
 details.edit {
   summary {

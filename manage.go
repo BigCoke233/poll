@@ -184,7 +184,7 @@ func (s *server) managePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) renderManage(w http.ResponseWriter, r *http.Request, status int, m mgr, p *Poll, f url.Values, notice, errKey string) {
-	s.render(w, r, status, "manage", &page{Title: p.Title, Poll: p, Notice: notice, Error: errKey, Form: f, Base: m.base,
+	s.render(w, r, status, "manage", &page{Poll: p, Notice: notice, Error: errKey, Form: f, Base: m.base,
 		Action: m.base + "/edit", Button: "admin.save", Results: results(p)})
 }
 
@@ -238,7 +238,7 @@ func (s *server) deleteConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "confirm", &page{Title: p.Title, Poll: p, Text: "admin.delete.confirm", Detail: p.Title,
+	s.render(w, r, http.StatusOK, "confirm", &page{Poll: p, Text: "admin.delete.confirm", Detail: p.Title,
 		Action: m.base + "/delete", Button: "admin.delete", Link: m.base, LinkText: "remove.cancel"})
 }
 
@@ -265,7 +265,7 @@ func (s *server) closeConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 		s.fail(w, r, errClosed)
 		return
 	}
-	s.render(w, r, http.StatusOK, "confirm", &page{Title: p.Title, Poll: p, Text: "admin.close.confirm", Detail: p.Options[i].Text,
+	s.render(w, r, http.StatusOK, "confirm", &page{Poll: p, Text: "admin.close.confirm", Detail: p.Options[i].Text,
 		Action: m.base + "/close", Form: url.Values{"option": {strconv.Itoa(i)}}, Button: "admin.close.button",
 		Link: m.base, LinkText: "remove.cancel"})
 }
