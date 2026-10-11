@@ -209,6 +209,7 @@ meter::-moz-meter-bar { background: var(--fg); }
 
 .names { display: flex; flex-wrap: wrap; gap: .2rem .5rem; color: var(--lo); font-size: .85rem; }
 .names li + li::before { content: "·"; margin-inline-end: .5rem; }
+.none { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; margin-top: 1rem; color: var(--lo); font-size: .85rem; }
 
 .mine li { padding: .7rem 0; border-bottom: var(--rule); color: var(--lo); display: grid; grid-template-columns: 1.5rem 1fr; }
 .mine li.picked { color: var(--fg); font-weight: 700; }

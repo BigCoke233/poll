@@ -119,6 +119,7 @@
   "removed.text": "Done. Your answer has been removed from this poll. Changed your mind? You can vote again anytime while the poll is open.",
   "removed.title": "Answer removed",
   "results.title": "Answers",
+  "results.none": "None of these",
   "sent.link": "Edit my answer",
   "sent.text": "You'll get an email when the decision is final. We've also emailed you a personal link, in case you want to change or remove your answer later.",
   "sent.text.nomail": "You didn't enter an email address, so no updates will be sent. Bookmark the link below if you want to change or remove your answer later.",

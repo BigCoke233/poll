@@ -42,6 +42,7 @@
   </li>
 {{end}}
 </ol>
+{{with .Poll.None}}<p class="none">{{t $.Lang "results.none"}}: <span class="names">{{range $i, $a := .}}{{if $i}}, {{end}}{{$a.Name}}{{end}}</span></p>{{end}}
 {{end}}
 
 {{define "pollhead"}}

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -37,6 +38,19 @@ type Answer struct {
 }
 
 func (a *Answer) Chose(i int) bool { return slices.Contains(a.Choices, i) }
+
+// String describes an answer for the log, without email or token.
+func (a *Answer) String() string { return fmt.Sprintf("%q choices %v", a.Name, a.Choices) }
+
+// None lists the answers that picked no option.
+func (p *Poll) None() (as []*Answer) {
+	for _, a := range p.Answers {
+		if len(a.Choices) == 0 {
+			as = append(as, a)
+		}
+	}
+	return as
+}
 
 type Poll struct {
 	ID             string    `json:"-"`
@@ -156,14 +170,16 @@ func (s *store) get(id string) (*Poll, error) {
 	return s.read(id)
 }
 
-func (s *store) update(id, action string, fn func(*Poll) error) (*Poll, error) {
+// update applies fn and logs the action it returns.
+func (s *store) update(id string, fn func(*Poll) (string, error)) (*Poll, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.read(id)
 	if err != nil {
 		return nil, err
 	}
-	if err := fn(p); err != nil {
+	action, err := fn(p)
+	if err != nil {
 		return p, err
 	}
 	return p, s.logged(id, action, s.write(p))
@@ -188,12 +204,14 @@ func (s *store) create(p *Poll, action string) error {
 	return s.logged(p.ID, action, s.write(p))
 }
 
-func (s *store) delete(id, action string) error {
+func (s *store) delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !validID(id) {
-		return errNotFound
+	p, err := s.read(id)
+	if err != nil {
+		return err
 	}
+	action := fmt.Sprintf("deleted %q with %d answers", p.Title, len(p.Answers))
 	if err := os.Remove(s.path(id)); errors.Is(err, fs.ErrNotExist) {
 		return errNotFound
 	} else if err != nil {

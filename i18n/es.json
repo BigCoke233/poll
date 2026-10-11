@@ -119,6 +119,7 @@
   "removed.text": "Hecho. Tu respuesta se ha eliminado de esta encuesta. ¿Has cambiado de opinión? Puedes volver a votar mientras la encuesta esté abierta.",
   "removed.title": "Respuesta eliminada",
   "results.title": "Respuestas",
+  "results.none": "Ninguna de estas",
   "sent.link": "Editar mi respuesta",
   "sent.text": "Recibirás un correo cuando la decisión sea definitiva. También te hemos enviado un enlace personal, por si quieres cambiar o eliminar tu respuesta más tarde.",
   "sent.text.nomail": "No indicaste una dirección de correo, así que no se enviarán novedades. Guarda el enlace de abajo en tus marcadores si quieres cambiar o eliminar tu respuesta más tarde.",

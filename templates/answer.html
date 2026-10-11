@@ -16,7 +16,7 @@
       <legend>{{if .Poll.Multiple}}{{t .Lang "poll.choose.multiple"}}{{else}}{{t .Lang "poll.choose.single"}}{{end}}</legend>
       {{range $i, $o := .Poll.Options}}
       <label class="choice">
-        <input type="{{if $.Poll.Multiple}}checkbox{{else}}radio{{end}}" name="choice" value="{{$i}}"{{if lt $i 9}} data-key="{{inc $i}}"{{end}}{{if $.Answer.Chose $i}} checked{{end}}{{if not $.Poll.Multiple}} required{{end}}>
+        <input type="{{if $.Poll.Multiple}}checkbox{{else}}radio{{end}}" name="choice" value="{{$i}}"{{if lt $i 9}} data-key="{{inc $i}}"{{end}}{{if $.Answer.Chose $i}} checked{{end}}>
         <span>{{$o.Text}}</span>
       </label>
       {{end}}

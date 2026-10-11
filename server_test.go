@@ -190,7 +190,7 @@ func (e *testEnv) rename(from, to string) {
 	if err := e.srv.store.create(p, "test"); err != nil {
 		e.t.Fatal(err)
 	}
-	if err := e.srv.store.delete(from, "test"); err != nil {
+	if err := e.srv.store.delete(from); err != nil {
 		e.t.Fatal(err)
 	}
 }
@@ -324,9 +324,9 @@ func TestPowSubmit(t *testing.T) {
 func TestMailFormat(t *testing.T) {
 	e := newEnv(t)
 	e.createPoll("dinner", opts, false, false)
-	e.srv.store.update("dinner", "test", func(p *Poll) error {
+	e.srv.store.update("dinner", func(p *Poll) (string, error) {
 		p.OwnerToken, p.OwnerEmail, p.OwnerLang = "OWNER", "owner@example.com", "en"
-		return nil
+		return "test", nil
 	})
 	e.do("POST", "/p/dinner", url.Values{"name": {"Jörg"}, "email": {"j@example.com"}, "choice": {"0"}}, false, "Accept-Language", "de-AT,de;q=0.9,en;q=0.5")
 	m := e.mailsTo("j@example.com")[0]
@@ -620,8 +620,11 @@ func TestAnswering(t *testing.T) {
 	if r := e.do("POST", l+"/update", url.Values{"choice": {"1"}}, false, "X-Autosave", "1"); r.status != 204 || e.poll("dinner").Answers[0].Choices[0] != 1 {
 		t.Fatalf("autosave: %d", r.status)
 	}
-	if r := e.do("POST", l+"/update", url.Values{}, false, "X-Autosave", "1"); r.status != 400 || !strings.Contains(r.body, T("en", "err.choice")) || strings.Contains(r.body, "<html") {
+	if r := e.do("POST", l+"/update", url.Values{"choice": {"9"}}, false, "X-Autosave", "1"); r.status != 400 || !strings.Contains(r.body, T("en", "err.choice")) || strings.Contains(r.body, "<html") {
 		t.Fatalf("autosave error: %d %q", r.status, r.body)
+	}
+	if r := e.post(l+"/update", url.Values{}); r.status != 303 || len(e.poll("dinner").Answers[0].Choices) != 0 || !strings.Contains(e.get(e.manage("dinner")).body, T("en", "results.none")) {
+		t.Fatalf("no choice: %d", r.status)
 	}
 
 	if e.get(l+"/remove").status != 200 || len(e.poll("dinner").Answers) != 1 {
@@ -678,7 +681,7 @@ func TestSubmitRevalidatesUnderLock(t *testing.T) {
 	e.srv.pow = newPow(0, func() time.Time {
 		if edit {
 			edit = false
-			e.srv.store.update("dinner", "test", func(p *Poll) error { p.Options = p.Options[:1]; return nil })
+			e.srv.store.update("dinner", func(p *Poll) (string, error) { p.Options = p.Options[:1]; return "test", nil })
 		}
 		return e.clock()
 	})
@@ -709,6 +712,26 @@ func TestAnsweringWithoutEmail(t *testing.T) {
 	}
 }
 
+func TestAnsweringWithNoOption(t *testing.T) {
+	e := newEnv(t)
+	e.createPoll("dinner", opts, false, true)
+	e.submit("dinner", "Anna", "", 0)
+	e.submit("dinner", "Lukas", "")
+	if p := e.poll("dinner"); len(p.Answers) != 2 || len(p.Answers[1].Choices) != 0 {
+		t.Fatal("an answer without any option must be accepted")
+	}
+	none := T("en", "results.none") + ": "
+	if r := e.get("/p/dinner"); !strings.Contains(r.body, none+`<span class="names">Lukas</span>`) {
+		t.Fatal("public results must list who picked nothing separately")
+	}
+	if ms := e.mailsTo("owner@example.com"); !strings.Contains(ms[len(ms)-1].Text, none+"Lukas") {
+		t.Fatalf("creator mail must list who picked nothing:\n%s", ms[len(ms)-1].Text)
+	}
+	if e.post("/p/dinner", url.Values{"name": {"Two"}, "choice": {"0", "1"}}).status != 400 {
+		t.Fatal("single choice poll must still reject two options")
+	}
+}
+
 func TestCreatingWithoutEmail(t *testing.T) {
 	e := newEnv(t)
 	f := url.Values{"title": {"T"}, "options": {opts}, "name": {"Owner"}}
@@ -735,7 +758,7 @@ func TestClose(t *testing.T) {
 	e := newEnv(t)
 	e.createPoll("dinner", opts+"\nParty am 24.10. um 19.30 Uhr", true, false)
 
-	e.srv.store.update("dinner", "test", func(p *Poll) error { p.Options[3] = Option{Text: p.Options[3].Text}; return nil })
+	e.srv.store.update("dinner", func(p *Poll) (string, error) { p.Options[3] = Option{Text: p.Options[3].Text}; return "test", nil })
 	l := e.answer("dinner", "Anna", "anna@example.com", 0, 3)
 	e.answer("dinner", "Ben", "ben@example.com", 2)
 	before := e.mailCount()
@@ -780,7 +803,7 @@ func TestClose(t *testing.T) {
 	}{{"2", ""}, {"3", "DTSTART:20261024T173000Z"}} {
 		e := newEnv(t)
 		e.createPoll("x", opts+"\nParty am 24.10. um 19.30 Uhr", true, false)
-		e.srv.store.update("x", "test", func(p *Poll) error { p.Options[3] = Option{Text: p.Options[3].Text}; return nil })
+		e.srv.store.update("x", func(p *Poll) (string, error) { p.Options[3] = Option{Text: p.Options[3].Text}; return "test", nil })
 		e.answer("x", "Anna", "anna@example.com", 2, 3)
 		e.post(e.manage("x")+"/close", url.Values{"option": {c.option}})
 		ms := e.mailsTo("anna@example.com")
@@ -865,6 +888,9 @@ func TestThemes(t *testing.T) {
 	e.rename(createdID(e.adminPost("/new", url.Values{"title": {"T"}, "options": {"A"}, "theme": {"fun"}, "name": {"O"}, "email": {"o@example.com"}})), "t")
 	if e.poll("t").Theme != "fun" || !strings.Contains(e.get("/p/t").body, `href="/theme.css?theme=fun"`) || !strings.Contains(e.get(e.manage("t")).body, "theme=fun") {
 		t.Fatal("poll theme not stored or not used")
+	}
+	if r := e.submit("t", "Anna", "", 0); !strings.Contains(r.body, T("en", "sent.title")) || !strings.Contains(r.body, `href="/theme.css?theme=fun"`) {
+		t.Fatal("the thanks page must use the poll's theme")
 	}
 	e.post(e.manage("t")+"/edit", url.Values{"title": {"T"}, "theme": {"bogus"}})
 	if e.poll("t").Theme != "" {

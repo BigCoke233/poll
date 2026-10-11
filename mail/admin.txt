@@ -8,4 +8,6 @@
 {{printf "%02d" (inc .Index)}} {{.Option.Text}}  [{{len .Names}}] {{.Bar}}
 {{if .Names}}   {{range $i, $n := .Names}}{{if $i}}, {{end}}{{$n}}{{end}}
 {{end}}{{end}}
+{{with .Poll.None}}{{t $.Lang "results.none"}}: {{range $i, $a := .}}{{if $i}}, {{end}}{{$a.Name}}{{end}}
+{{end}}
 {{.Link}}

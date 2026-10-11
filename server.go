@@ -277,7 +277,7 @@ func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name
 
 	if p.Poll != nil {
 		p.Theme = p.Poll.Theme
-	} else {
+	} else if p.Theme == "" {
 		p.Theme = s.validTheme(r.URL.Query().Get("theme"))
 	}
 	if p.Form.Has("theme") {
@@ -310,7 +310,11 @@ func (s *server) message(w http.ResponseWriter, r *http.Request, status int, tit
 		http.Error(w, T(l, cmp.Or(text, title)), status)
 		return
 	}
-	s.render(w, r, status, "message", &page{Lang: l, Title: T(l, title), Text: text, Link: link, LinkText: linkText})
+	pg := &page{Lang: l, Title: T(l, title), Text: text, Link: link, LinkText: linkText}
+	if p, err := s.store.get(r.PathValue("id")); err == nil {
+		pg.Theme = p.Theme // pages about a poll keep its look
+	}
+	s.render(w, r, status, "message", pg)
 }
 
 func (s *server) fail(w http.ResponseWriter, r *http.Request, err error) {
@@ -416,7 +420,7 @@ func parseChoices(p *Poll, vals []string) ([]int, bool) {
 		cs = append(cs, i)
 	}
 	slices.Sort(cs)
-	return cs, len(cs) == 1 || (p.Multiple && len(cs) > 1)
+	return cs, len(cs) <= 1 || p.Multiple
 }
 
 func (s *server) submit(w http.ResponseWriter, r *http.Request) {
@@ -451,19 +455,19 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var added *Answer
-	p, err = s.store.update(id, "answer added", func(p *Poll) error {
+	p, err = s.store.update(id, func(p *Poll) (string, error) {
 		if p.Closed {
-			return errClosed
+			return "", errClosed
 		}
-		if email != "" && p.byEmail(email) != nil {
-			return nil
+		if a := p.byEmail(email); email != "" && a != nil {
+			return fmt.Sprintf("answer %v not added again, email already answered", a), nil
 		}
 		if choices, okChoices = parseChoices(p, f["choice"]); !okChoices {
-			return errChoice
+			return "", errChoice
 		}
 		added = &Answer{Token: rand.Text(), Name: name, Email: email, Lang: lang(r), Choices: choices, Created: s.now()}
 		p.Answers = append(p.Answers, added)
-		return nil
+		return fmt.Sprintf("answer %v added", added), nil
 	})
 	if err != nil {
 		s.fail(w, r, err)
@@ -527,28 +531,30 @@ func (s *server) answerPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "answer", pg)
 }
 
-func (s *server) act(r *http.Request, action string, fn func(p *Poll, a *Answer) error) (*Poll, *Answer, error) {
+func (s *server) act(r *http.Request, fn func(p *Poll, a *Answer) (string, error)) (*Poll, *Answer, error) {
 	var ans *Answer
-	p, err := s.store.update(r.PathValue("id"), action, func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("id"), func(p *Poll) (string, error) {
 		if ans = p.byToken(r.PathValue("token")); ans == nil {
-			return errNotFound
+			return "", errNotFound
 		}
-		return fn(p, ans)
+		before := ans.String()
+		action, err := fn(p, ans)
+		return "answer " + before + " " + action, err
 	})
 	return p, ans, err
 }
 
 func (s *server) updateAnswer(w http.ResponseWriter, r *http.Request) {
-	p, a, err := s.act(r, "answer updated by participant", func(p *Poll, a *Answer) error {
+	p, a, err := s.act(r, func(p *Poll, a *Answer) (string, error) {
 		if p.Closed {
-			return errClosed
+			return "", errClosed
 		}
 		cs, ok := parseChoices(p, r.PostForm["choice"])
 		if !ok {
-			return errChoice
+			return "", errChoice
 		}
 		a.Choices = cs
-		return nil
+		return fmt.Sprintf("changed by participant to %v", cs), nil
 	})
 	if err != nil {
 		s.fail(w, r, err)
@@ -575,12 +581,12 @@ func (s *server) removeConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) removeAnswer(w http.ResponseWriter, r *http.Request) {
-	p, a, err := s.act(r, "answer removed by participant", func(p *Poll, a *Answer) error {
+	p, a, err := s.act(r, func(p *Poll, a *Answer) (string, error) {
 		if p.Closed {
-			return errClosed
+			return "", errClosed
 		}
 		p.remove(a.Token)
-		return nil
+		return "removed by participant", nil
 	})
 	if err != nil {
 		s.fail(w, r, err)

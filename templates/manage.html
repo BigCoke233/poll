@@ -35,6 +35,7 @@
       </li>
       {{end}}
     </ol>
+    {{with .Poll.None}}<div class="none">{{t $.Lang "results.none"}}: <ul class="names">{{range $a := .}}<li><button type="button" class="person" popovertarget="p-{{$a.Token}}" title="{{t $.Lang "admin.actions"}}">{{$a.Name}}</button></li>{{end}}</ul></div>{{end}}
     {{if not .Poll.Answers}}<p class="empty">{{t .Lang "admin.noanswers"}}</p>{{end}}
   </div>
   {{range $a := .Poll.Answers}}

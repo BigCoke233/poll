@@ -119,6 +119,7 @@
   "removed.text": "C'est fait. Ta réponse a été supprimée de ce sondage. Tu as changé d'avis ? Tu peux voter à nouveau tant que le sondage est ouvert.",
   "removed.title": "Réponse supprimée",
   "results.title": "Réponses",
+  "results.none": "Aucune de ces options",
   "sent.link": "Modifier ma réponse",
   "sent.text": "Tu recevras un e-mail quand la décision sera définitive. Nous t'avons aussi envoyé un lien personnel, au cas où tu voudrais modifier ou supprimer ta réponse plus tard.",
   "sent.text.nomail": "Tu n'as pas indiqué d'adresse e-mail, donc aucune mise à jour ne sera envoyée. Ajoute le lien ci-dessous à tes favoris si tu veux modifier ou supprimer ta réponse plus tard.",

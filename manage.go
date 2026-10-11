@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -107,7 +108,7 @@ func (s *server) pollFromForm(f url.Values) (*Poll, string) {
 func (s *server) create(p *Poll) error {
 	for {
 		p.ID = newID()
-		if err := s.store.create(p, "created"); !errors.Is(err, errExists) {
+		if err := s.store.create(p, fmt.Sprintf("created %q with %d options", p.Title, len(p.Options))); !errors.Is(err, errExists) {
 			return err
 		}
 	}
@@ -191,12 +192,12 @@ func (s *server) renderManage(w http.ResponseWriter, r *http.Request, status int
 func (s *server) manageEdit(w http.ResponseWriter, r *http.Request, m mgr) {
 	f := r.PostForm
 	var errKey string
-	p, err := s.store.update(r.PathValue("id"), "edited", func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("id"), func(p *Poll) (string, error) {
 		p.Title = strings.TrimSpace(f.Get("title"))
 		p.Description = strings.TrimSpace(f.Get("description"))
 		if f.Has("options") {
 			if len(p.Answers) > 0 || p.Closed {
-				return errLocked
+				return "", errLocked
 			}
 			p.Options = parseOptions(f.Get("options"), s.cfg.Loc, s.now())
 			p.Multiple = f.Get("mode") != "single"
@@ -206,9 +207,9 @@ func (s *server) manageEdit(w http.ResponseWriter, r *http.Request, m mgr) {
 			p.Theme = s.validTheme(f.Get("theme"))
 		}
 		if errKey = validatePoll(p); errKey != "" {
-			return errInvalid
+			return "", errInvalid
 		}
-		return nil
+		return fmt.Sprintf("edited %q, results visible %v", p.Title, p.ResultsVisible), nil
 	})
 	if errKey != "" && autosave(r) {
 		http.Error(w, T(lang(r), errKey), http.StatusBadRequest)
@@ -243,7 +244,7 @@ func (s *server) deleteConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) deletePoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	if err := s.store.delete(r.PathValue("id"), "deleted"); err != nil {
+	if err := s.store.delete(r.PathValue("id")); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -271,16 +272,16 @@ func (s *server) closeConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	p, err := s.store.update(r.PathValue("id"), "closed", func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("id"), func(p *Poll) (string, error) {
 		i, err := strconv.Atoi(r.PostForm.Get("option"))
 		if err != nil || i < 0 || i >= len(p.Options) {
-			return errInvalid
+			return "", errInvalid
 		}
 		if p.Closed {
-			return errClosed
+			return "", errClosed
 		}
 		p.Closed, p.Outcome = true, i
-		return nil
+		return fmt.Sprintf("closed with option %d %q", i, p.Options[i].Text), nil
 	})
 	if err != nil {
 		s.fail(w, r, err)
@@ -293,9 +294,10 @@ func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) reopenPoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	_, err := s.store.update(r.PathValue("id"), "reopened", func(p *Poll) error {
+	_, err := s.store.update(r.PathValue("id"), func(p *Poll) (string, error) {
+		action := fmt.Sprintf("reopened, was closed with option %d %q", p.Outcome, p.OutcomeOption().Text)
 		p.Closed, p.Outcome = false, 0
-		return nil
+		return action, nil
 	})
 	if err != nil {
 		s.fail(w, r, err)
@@ -305,12 +307,13 @@ func (s *server) reopenPoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) manageRemove(w http.ResponseWriter, r *http.Request, m mgr) {
-	_, err := s.store.update(r.PathValue("id"), "answer removed by owner", func(p *Poll) error {
-		if p.byToken(r.PostForm.Get("token")) == nil {
-			return errNotFound
+	_, err := s.store.update(r.PathValue("id"), func(p *Poll) (string, error) {
+		a := p.byToken(r.PostForm.Get("token"))
+		if a == nil {
+			return "", errNotFound
 		}
-		p.remove(r.PostForm.Get("token"))
-		return nil
+		p.remove(a.Token)
+		return fmt.Sprintf("answer %v removed by owner", a), nil
 	})
 	if err != nil {
 		s.fail(w, r, err)

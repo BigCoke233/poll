@@ -29,4 +29,4 @@ screenshots:
 	./screenshots.sh
 
 clean:
-	rm -rf poll screenshots/*/
+	rm -rf data/* screenshots/*/
