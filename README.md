@@ -1,5 +1,7 @@
 <img src="logo-full.svg" alt="][✓ nobloat/poll" width="336">
 
+**Live demo: [poll.nobloat.org](https://poll.nobloat.org)**
+
 A minimal alternative to Doodle, born out of frustration with it's ongoing *enshiti***ion*.
 
 - **Plain Go stdlib only**, no dependencies (see [go.mod](go.mod)), plus a little JavaScript and CSS
