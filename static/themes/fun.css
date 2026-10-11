@@ -1,8 +1,5 @@
-/* fun: rounded type, fresh mint paper, forest ink, leafy green accent, lime buttons.
-   Thick borders, big round corners, dotted rules, wavy links, slightly tilted cards,
-   pill buttons that wiggle on hover, checkboxes that bounce. */
 :root {
-  --font: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif;
+  --font: ui-rounded, system-ui, sans-serif;
   --accent: #16a34a;
   --bg: light-dark(#e9fbe5, #0f2418);
   --fg: light-dark(#14361f, #e6ffe9);

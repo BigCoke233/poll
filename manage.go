@@ -12,16 +12,11 @@ import (
 )
 
 type mgr struct {
-	base, who string
+	base string
+	poll *Poll
 }
 
 type manageFunc func(http.ResponseWriter, *http.Request, mgr)
-
-func (s *server) asAdmin(h manageFunc) http.Handler {
-	return s.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h(w, r, mgr{base: "/a/p/" + r.PathValue("slug"), who: "admin"})
-	}))
-}
 
 func (s *server) asOwner(h manageFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +30,7 @@ func (s *server) asOwner(h manageFunc) http.Handler {
 			s.fail(w, r, errNotFound)
 			return
 		}
-		h(w, r, mgr{base: "/p/" + p.Slug + "/m/" + tok, who: "owner"})
+		h(w, r, mgr{base: "/p/" + p.Slug + "/m/" + tok, poll: p})
 	})
 }
 
@@ -53,7 +48,6 @@ func (s *server) manageRoutes(mux *http.ServeMux) {
 		{"GET {base}/delete", s.deleteConfirm},
 		{"POST {base}/delete", s.deletePoll},
 	} {
-		mux.Handle(strings.Replace(rt.pattern, "{base}", "/a/p/{slug}", 1), s.asAdmin(rt.h))
 		mux.Handle(strings.Replace(rt.pattern, "{base}", "/p/{slug}/m/{token}", 1), s.asOwner(rt.h))
 	}
 	mux.Handle("GET /p/{slug}/m/{token}/created", s.asOwner(s.created))
@@ -75,23 +69,16 @@ func (s *server) adminIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l := lang(r)
-	notice := r.URL.Query().Get("ok")
-	if notice != "deleted" {
-		notice = ""
-	}
-	s.render(w, r, http.StatusOK, "admin", &page{Lang: l, Title: T(l, "admin.title"), Polls: polls, Notice: notice})
+	s.render(w, r, http.StatusOK, "admin", &page{Lang: l, Title: T(l, "admin.title"), Polls: polls})
 }
 
 func (s *server) newPage(w http.ResponseWriter, r *http.Request, status int, f url.Values, errKey string) {
 	l := lang(r)
-	pg := &page{Lang: l, Title: T(l, "admin.new"), Error: errKey, Form: f, Action: "/a/new", Button: "new.create"}
-	if r.URL.Path != "/a/new" {
-		pg.Public, pg.Action, pg.Challenge, pg.Difficulty = true, "/new", s.pow.issue(), s.cfg.Difficulty
-	}
-	s.render(w, r, status, "admin_new", pg)
+	s.render(w, r, status, "new", &page{Lang: l, Title: T(l, "admin.new"), Error: errKey, Form: f, Action: "/new", Button: "new.create",
+		Public: true, Challenge: s.pow.issue(), Difficulty: s.cfg.Difficulty})
 }
 
-func (s *server) adminNew(w http.ResponseWriter, r *http.Request) {
+func (s *server) newPoll(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	theme := s.validTheme(q.Get("theme"))
 	s.newPage(w, r, http.StatusOK, url.Values{"mode": {"multiple"}, "theme": {theme}}, "")
@@ -117,36 +104,16 @@ func (s *server) pollFromForm(f url.Values) (*Poll, string) {
 	return p, validatePoll(p)
 }
 
-func (s *server) create(p *Poll, who string) error {
+func (s *server) create(p *Poll) error {
 	for {
 		p.Slug = newID()
-		if err := s.store.create(p, "created by "+who); !errors.Is(err, errExists) {
+		if err := s.store.create(p, "created"); !errors.Is(err, errExists) {
 			return err
 		}
 	}
 }
 
-func (s *server) adminCreate(w http.ResponseWriter, r *http.Request) {
-	if !s.parseForm(w, r) {
-		return
-	}
-	p, errKey := s.pollFromForm(r.PostForm)
-	if errKey != "" {
-		s.newPage(w, r, http.StatusBadRequest, r.PostForm, errKey)
-		return
-	}
-	if err := s.create(p, "admin"); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	http.Redirect(w, r, "/a/p/"+p.Slug, http.StatusSeeOther)
-}
-
-func (s *server) publicNew(w http.ResponseWriter, r *http.Request) {
-	s.adminNew(w, r)
-}
-
-func (s *server) publicCreate(w http.ResponseWriter, r *http.Request) {
+func (s *server) createPoll(w http.ResponseWriter, r *http.Request) {
 	if !s.parseForm(w, r) {
 		return
 	}
@@ -158,7 +125,7 @@ func (s *server) publicCreate(w http.ResponseWriter, r *http.Request) {
 	case errKey != "":
 	case name == "" || len(name) > 100:
 		errKey = "err.name"
-	case !validEmail(email):
+	case email != "" && !validEmail(email):
 		errKey = "err.email"
 	case !s.pow.verify(f.Get("pow"), f.Get("nonce")):
 		errKey = "err.pow"
@@ -168,7 +135,7 @@ func (s *server) publicCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.OwnerName, p.OwnerEmail, p.OwnerLang, p.OwnerToken = name, email, lang(r), rand.Text()
-	if err := s.create(p, "public creator"); err != nil {
+	if err := s.create(p); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -177,7 +144,11 @@ func (s *server) publicCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) created(w http.ResponseWriter, r *http.Request, m mgr) {
-	s.message(w, r, http.StatusOK, "created.title", "created.text", m.base, "created.link")
+	text := "created.text"
+	if m.poll.OwnerEmail == "" {
+		text = "created.text.nomail"
+	}
+	s.message(w, r, http.StatusOK, "created.title", text, m.base, "created.link")
 }
 
 func validatePoll(p *Poll) string {
@@ -218,7 +189,7 @@ func (s *server) managePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) renderManage(w http.ResponseWriter, r *http.Request, status int, m mgr, p *Poll, f url.Values, notice, errKey string) {
-	s.render(w, r, status, "admin_poll", &page{Title: p.Title, Poll: p, Notice: notice, Error: errKey, Form: f, Base: m.base,
+	s.render(w, r, status, "manage", &page{Title: p.Title, Poll: p, Notice: notice, Error: errKey, Form: f, Base: m.base,
 		Action: m.base + "/edit", Button: "admin.save", Results: results(p)})
 }
 
@@ -228,7 +199,7 @@ func (s *server) manageEdit(w http.ResponseWriter, r *http.Request, m mgr) {
 	}
 	f := r.PostForm
 	var errKey string
-	p, err := s.store.update(r.PathValue("slug"), "edited by "+m.who, func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("slug"), "edited", func(p *Poll) error {
 		p.Title = strings.TrimSpace(f.Get("title"))
 		p.Description = strings.TrimSpace(f.Get("description"))
 		if f.Has("options") {
@@ -280,12 +251,8 @@ func (s *server) deleteConfirm(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) deletePoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	if err := s.store.delete(r.PathValue("slug"), "deleted by "+m.who); err != nil {
+	if err := s.store.delete(r.PathValue("slug"), "deleted"); err != nil {
 		s.fail(w, r, err)
-		return
-	}
-	if strings.HasPrefix(m.base, "/a/") {
-		http.Redirect(w, r, "/a?ok=deleted", http.StatusSeeOther)
 		return
 	}
 	s.message(w, r, http.StatusOK, "done.title", "notice.deleted", "", "")
@@ -315,7 +282,7 @@ func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 	if !s.parseForm(w, r) {
 		return
 	}
-	p, err := s.store.update(r.PathValue("slug"), "closed by "+m.who, func(p *Poll) error {
+	p, err := s.store.update(r.PathValue("slug"), "closed", func(p *Poll) error {
 		i, err := strconv.Atoi(r.PostForm.Get("option"))
 		if err != nil || i < 0 || i >= len(p.Options) {
 			return errInvalid
@@ -337,7 +304,7 @@ func (s *server) closePoll(w http.ResponseWriter, r *http.Request, m mgr) {
 }
 
 func (s *server) reopenPoll(w http.ResponseWriter, r *http.Request, m mgr) {
-	_, err := s.store.update(r.PathValue("slug"), "reopened by "+m.who, func(p *Poll) error {
+	_, err := s.store.update(r.PathValue("slug"), "reopened", func(p *Poll) error {
 		p.Closed, p.Outcome = false, 0
 		return nil
 	})
@@ -352,7 +319,7 @@ func (s *server) manageRemove(w http.ResponseWriter, r *http.Request, m mgr) {
 	if !s.parseForm(w, r) {
 		return
 	}
-	_, err := s.store.update(r.PathValue("slug"), "answer removed by "+m.who, func(p *Poll) error {
+	_, err := s.store.update(r.PathValue("slug"), "answer removed by owner", func(p *Poll) error {
 		if p.byToken(r.PostForm.Get("token")) == nil {
 			return errNotFound
 		}

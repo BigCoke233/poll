@@ -137,12 +137,11 @@ func TestDetectLang(t *testing.T) {
 }
 
 func TestConfig(t *testing.T) {
-	for _, k := range []string{"BASE_URL", "ADMIN_PASSWORD", "ADMIN_EMAIL", "SMTP_URL", "SMTP_FROM", "LOGO", "THEME", "PUBLIC_CREATE"} {
+	for _, k := range []string{"BASE_URL", "ADMIN_PASSWORD", "SMTP_URL", "SMTP_FROM", "THEME", "PUBLIC_CREATE"} {
 		t.Setenv(k, "")
 	}
 	t.Setenv("BASE_URL", "https://poll.example/")
 	t.Setenv("ADMIN_PASSWORD", "long secret")
-	t.Setenv("ADMIN_EMAIL", "me@example.com")
 	t.Setenv("SMTP_URL", "smtp://me%40example.com:p%2Fss@mail.example:587")
 	t.Setenv("SMTP_FROM", "poll@example.com")
 	s, err := loadConfig()
@@ -156,14 +155,14 @@ func TestConfig(t *testing.T) {
 	t.Setenv("BASE_URL", "http://localhost:8737")
 	t.Setenv("SMTP_URL", "smtp+insecure://localhost:1025")
 	if s, err := loadConfig(); err != nil || s.SMTP.TLS != "none" || s.SMTP.User != "" {
-		t.Fatalf("short password must be fine on localhost, smtp+insecure means no TLS: %v %+v", err, s.SMTP)
+		t.Fatalf("smtp+insecure means no TLS: %v %+v", err, s.SMTP)
 	}
 	t.Setenv("THEME", "rainbow")
 	t.Setenv("BASE_URL", "http://poll.example")
 	t.Setenv("SMTP_FROM", "nope")
 	t.Setenv("SMTP_URL", "smtps://secret@mail.example")
 	_, err = loadConfig()
-	for _, want := range []string{"BASE_URL", "ADMIN_PASSWORD", "SMTP_FROM", "SMTP_URL", "THEME must be one of business, elegant, fun, minimal"} {
+	for _, want := range []string{"BASE_URL", "SMTP_FROM", "SMTP_URL", "THEME must be one of business, elegant, fun, minimal"} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("want error about %s, got %v", want, err)
 		}

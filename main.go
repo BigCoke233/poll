@@ -30,11 +30,10 @@ func loadConfig() (config, error) {
 	s := config{
 		BaseURL:       strings.TrimRight(req("BASE_URL"), "/"),
 		AdminPassword: req("ADMIN_PASSWORD"),
-		AdminEmail:    req("ADMIN_EMAIL"),
 		Loc:           time.Local,
 		Difficulty:    16,
 		DataDir:       "./data",
-		Addr:          ":8737",
+		Addr:          ":" + cmp.Or(os.Getenv("PORT"), "8737"),
 		Theme:         cmp.Or(os.Getenv("THEME"), "minimal"),
 		SMTP:          smtpConfig{From: req("SMTP_FROM")},
 	}
@@ -49,12 +48,6 @@ func loadConfig() (config, error) {
 		if s.PublicCreate, err = strconv.ParseBool(v); err != nil {
 			bad("PUBLIC_CREATE must be true or false, got %q", v)
 		}
-	}
-	if p := s.AdminPassword; p != "" && len(p) < 8 && !local {
-		bad("ADMIN_PASSWORD must be at least 8 characters (shorter only for a localhost BASE_URL)")
-	}
-	if e := s.AdminEmail; e != "" && !validEmail(e) {
-		bad("ADMIN_EMAIL is not a valid address: %q", e)
 	}
 	if e := s.SMTP.From; e != "" && !validEmail(e) {
 		bad("SMTP_FROM is not a valid address: %q", e)

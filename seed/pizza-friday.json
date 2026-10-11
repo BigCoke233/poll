@@ -19,5 +19,9 @@
   "closed": false,
   "outcome": 0,
   "created": "2026-10-08T18:50:43.090942897+02:00",
+  "owner_name": "Pizza Committee",
+  "owner_email": "pizza@example.org",
+  "owner_lang": "en",
+  "owner_token": "ASEIRUQD7POJBVG6VITTHGCIIK",
   "theme": "minimal"
 }

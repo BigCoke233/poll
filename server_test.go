@@ -36,7 +36,7 @@ func newEnv(t *testing.T, opts ...func(*config)) *testEnv {
 	t.Helper()
 	loc, _ := time.LoadLocation("Europe/Vienna")
 	e := &testEnv{t: t, now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC), dataDir: t.TempDir()}
-	cfg := config{DataDir: e.dataDir, BaseURL: "https://poll.example", AdminPassword: "secret", AdminEmail: "admin@example.com", Loc: loc}
+	cfg := config{DataDir: e.dataDir, BaseURL: "https://poll.example", AdminPassword: "secret", Loc: loc}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -135,32 +135,26 @@ func (e *testEnv) adminPost(path string, f url.Values) resp { return e.do("POST"
 
 func (e *testEnv) createPoll(slug, options string, multiple, visible bool) {
 	e.t.Helper()
-	f := url.Values{"title": {"Team Dinner Ü"}, "description": {"Let's eat"}, "options": {options}}
+	f := url.Values{"title": {"Team Dinner Ü"}, "description": {"Let's eat"}, "options": {options}, "name": {"Owner"}, "email": {"owner@example.com"}, "pow": {e.srv.pow.issue()}, "nonce": {"0"}}
 	if !multiple {
 		f.Set("mode", "single")
 	}
 	if visible {
 		f.Set("results", "1")
 	}
-	n := e.mailCount()
-	r := e.adminPost("/a/new", f)
+	r := e.adminPost("/new", f)
 	if r.status != http.StatusSeeOther {
 		e.t.Fatalf("create poll: %d %s", r.status, r.body)
-	}
-	id := createdID(r)
-
-	if e.poll(id).OwnerToken != "" || e.mailCount() != n {
-		e.t.Fatal("admin-created polls have no owner and send no mail")
 	}
 	e.mu.Lock()
 	e.mails = nil
 	e.mu.Unlock()
-	e.rename(id, slug)
+	e.rename(createdID(r), slug)
 }
 
-func createdID(r resp) string {
-	return strings.Split(strings.TrimPrefix(r.header.Get("Location"), "/a"), "/")[2]
-}
+func (e *testEnv) manage(slug string) string { return "/p/" + slug + "/m/" + e.poll(slug).OwnerToken }
+
+func createdID(r resp) string { return strings.Split(r.header.Get("Location"), "/")[2] }
 
 func (e *testEnv) rename(id, slug string) {
 	e.t.Helper()
@@ -232,10 +226,10 @@ func TestResultsVisibility(t *testing.T) {
 			}
 		}
 		check()
-		e.adminPost("/a/p/dinner/close", url.Values{"option": {"1"}})
+		e.post(e.manage("dinner")+"/close", url.Values{"option": {"1"}})
 		check()
-		if r := e.adminGet("/a/p/dinner"); !strings.Contains(r.body, "Bertram") || !strings.Contains(r.body, "bertram@example.com") {
-			t.Fatal("admin doesn't see everything")
+		if r := e.get(e.manage("dinner")); !strings.Contains(r.body, "Bertram") || strings.Contains(r.body, "bertram@example.com") {
+			t.Fatal("the manage page shows every answer, but never an email address")
 		}
 	}
 }
@@ -243,11 +237,11 @@ func TestResultsVisibility(t *testing.T) {
 func TestSecurity(t *testing.T) {
 	e := newEnv(t)
 	e.createPoll("dinner", opts, false, false)
-	r := e.do("POST", "/a/new", url.Values{"title": {"T"}, "options": {"A"}}, true, "Sec-Fetch-Site", "cross-site")
+	r := e.do("POST", "/new", url.Values{"title": {"T"}, "options": {"A"}}, true, "Sec-Fetch-Site", "cross-site")
 	if r.status != 403 {
 		t.Fatalf("cross-site POST: %d", r.status)
 	}
-	if r := e.do("POST", "/a/new", url.Values{"title": {"T"}, "options": {"A"}}, true, "Origin", "https://evil.example"); r.status != 403 {
+	if r := e.do("POST", "/new", url.Values{"title": {"T"}, "options": {"A"}}, true, "Origin", "https://evil.example"); r.status != 403 {
 		t.Fatalf("cross-origin POST: %d", r.status)
 	}
 	if _, err := e.srv.store.get("evil"); err != errNotFound {
@@ -288,18 +282,22 @@ func TestPowSubmit(t *testing.T) {
 func TestMailFormat(t *testing.T) {
 	e := newEnv(t)
 	e.createPoll("dinner", opts, false, false)
+	e.srv.store.update("dinner", "test", func(p *Poll) error {
+		p.OwnerToken, p.OwnerEmail, p.OwnerLang = "OWNER", "owner@example.com", "en"
+		return nil
+	})
 	e.do("POST", "/p/dinner", url.Values{"name": {"Jörg"}, "email": {"j@example.com"}, "choice": {"0"}, "pow": {e.srv.pow.issue()}, "nonce": {"0"}}, false, "Accept-Language", "de-AT,de;q=0.9,en;q=0.5")
 	m := e.mailsTo("j@example.com")[0]
 	if m.Subject != T("de", "mail.link.subject", "Team Dinner Ü") || !strings.Contains(m.Text, "Hallo Jörg") {
 		t.Fatalf("participant language not used: %q", m.Subject)
 	}
-	if a := e.mailsTo("admin@example.com"); !strings.HasPrefix(a[0].Subject, "New answer") {
-		t.Fatalf("admin mail not in en: %q", a[0].Subject)
+	if a := e.mailsTo("owner@example.com"); !strings.HasPrefix(a[0].Subject, "New answer") {
+		t.Fatalf("creator mail not in the creator's language: %q", a[0].Subject)
 	}
-	if a := e.mailsTo("admin@example.com")[0]; !strings.Contains(a.Text, "Pizza") || !strings.Contains(a.Text, "01 Mo, 12.10.2026, 14:00–15:30  [1] ■") || !strings.Contains(a.Text, "Jörg") {
-		t.Fatalf("admin mail lacks the full results:\n%s", a.Text)
+	if a := e.mailsTo("owner@example.com")[0]; !strings.Contains(a.Text, "Pizza") || !strings.Contains(a.Text, "01 Mo, 12.10.2026, 14:00–15:30  [1] ■") || !strings.Contains(a.Text, "Jörg") || strings.Contains(a.Text, "j@example.com") {
+		t.Fatalf("creator mail lacks the full results or leaks the email:\n%s", a.Text)
 	}
-	e.adminPost("/a/p/dinner/close", url.Values{"option": {"0"}})
+	e.post(e.manage("dinner")+"/close", url.Values{"option": {"0"}})
 	ms := e.mailsTo("j@example.com")
 	closed := ms[len(ms)-1]
 	raw, err := buildMessage("poll@example.com", closed, e.clock())
@@ -341,7 +339,7 @@ func TestTemplatesRender(t *testing.T) {
 				for _, multiple := range []bool{false, true} {
 					p.Closed, p.Multiple = closed, multiple
 					pg := &page{Lang: lang, Title: "T", Poll: p, Polls: []*Poll{p}, Answer: a, Results: results(p),
-						Error: "err.name", Notice: "saved", Form: url.Values{"choice": {"0"}}, Challenge: "c", Text: "remove.text", Action: "/x", Button: "remove.button", Base: "/a/p/s", Public: true, Link: "/y", LinkText: "sent.link"}
+						Error: "err.name", Notice: "saved", Form: url.Values{"choice": {"0"}}, Challenge: "c", Text: "remove.text", Action: "/x", Button: "remove.button", Base: "/p/s/m/T", Public: true, Link: "/y", LinkText: "sent.link"}
 					var buf bytes.Buffer
 					if err := tpl.ExecuteTemplate(&buf, "layout", pg); err != nil {
 						t.Fatalf("%s/%s: %v", lang, name, err)
@@ -397,11 +395,11 @@ func TestSeedPolls(t *testing.T) {
 		t.Fatalf("seed: %v %d", err, len(polls))
 	}
 	for _, p := range polls {
-		if p.Closed || len(p.Answers) == 0 || p.Theme == "" {
-			t.Fatalf("%s: seed polls must be open, answered and themed", p.Slug)
+		if p.Closed || len(p.Answers) == 0 || p.Theme == "" || p.OwnerToken == "" {
+			t.Fatalf("%s: seed polls must be open, answered, themed and have a creator", p.Slug)
 		}
 	}
-	if r := e.adminGet("/a/p/pizza-friday"); r.status != 200 || !strings.Contains(r.body, "Rubber Duck") {
+	if r := e.get(e.manage("pizza-friday")); r.status != 200 || !strings.Contains(r.body, "Rubber Duck") {
 		t.Fatal("seed poll not rendered")
 	}
 	if r := e.get("/p/pizza-friday/a/" + e.poll("pizza-friday").Answers[0].Token); r.status != 200 || !strings.Contains(r.body, "Grace Hopper") {
@@ -425,11 +423,11 @@ func TestResultsSortedByCount(t *testing.T) {
 
 func TestPublicCreation(t *testing.T) {
 	off := newEnv(t)
-	if r := off.get("/new"); r.status != 404 {
-		t.Fatalf("/new without PUBLIC_CREATE: %d", r.status)
+	if r := off.get("/new"); r.status != 401 || off.adminGet("/new").status != 200 {
+		t.Fatalf("/new without PUBLIC_CREATE must need the admin login: %d", r.status)
 	}
 	e := newEnv(t, func(c *config) { c.PublicCreate = true })
-	if r := e.get("/p/lunch"); !strings.Contains(r.body, `class="home" href="/"`) {
+	if r := e.get("/p/lunch"); !strings.Contains(r.body, `class="home logo" href="/"`) {
 		t.Fatal("with a start page, the logo links to it")
 	}
 	if r := e.get("/"); r.status != 200 || !strings.Contains(r.body, `href="/new"`) || !strings.Contains(r.body, T("en", "home.pick.title")) {
@@ -488,12 +486,12 @@ func TestPublicCreation(t *testing.T) {
 	if len(e.mailsTo("admin@example.com")) != admin || len(e.mailsTo("olga@example.org")) != olga+1 {
 		t.Fatal("vote notification must go to the creator")
 	}
-
-	if r := e.adminGet("/a"); !strings.Contains(r.body, "olga@example.org") {
-		t.Fatal("admin overview misses the creator")
+	if ms := e.mailsTo("olga@example.org"); strings.Contains(ms[len(ms)-1].Text, "anna@example.com") || strings.Contains(e.get(manage).body, "anna@example.com") {
+		t.Fatal("participant emails are never shown to the creator")
 	}
-	if r := e.adminGet("/a/p/lunch"); r.status != 200 || !strings.Contains(r.body, "/a/p/lunch/edit") {
-		t.Fatal("admin manage page")
+
+	if r := e.adminGet("/a"); !strings.Contains(r.body, "olga@example.org") || !strings.Contains(r.body, `href="`+manage+`"`) {
+		t.Fatal("admin overview lists the creator and links to the manage page")
 	}
 
 	if r := e.post(manage+"/close", url.Values{"option": {"2"}}); r.status != 303 || !e.poll("lunch").Closed {
@@ -549,7 +547,7 @@ func TestAnswering(t *testing.T) {
 
 	r := e.submit("dinner", "Anna", " Anna@Example.com ", 1)
 	l := e.linkPath("anna@example.com")
-	if !strings.Contains(r.body, `href="`+l+`"`) || len(e.mailsTo("anna@example.com")) != 1 || len(e.mailsTo("admin@example.com")) != 1 {
+	if !strings.Contains(r.body, `href="`+l+`"`) || len(e.mailsTo("anna@example.com")) != 1 || len(e.mailsTo("owner@example.com")) != 1 {
 		t.Fatalf("submit: %d", r.status)
 	}
 	if c := results(e.poll("dinner")); c[0].Index != 1 || len(c[0].Names) != 1 {
@@ -563,7 +561,7 @@ func TestAnswering(t *testing.T) {
 	}
 
 	token := l[strings.LastIndex(l, "/")+1:]
-	if e.get(l).status != 200 || e.get("/p/other/a/"+token).status != 404 || !strings.Contains(e.adminGet("/a/p/dinner").body, l) {
+	if e.get(l).status != 200 || e.get("/p/other/a/"+token).status != 404 || !strings.Contains(e.get(e.manage("dinner")).body, l) {
 		t.Fatal("participant link")
 	}
 
@@ -590,12 +588,12 @@ func TestAnswering(t *testing.T) {
 	if r := e.post(l+"/remove", url.Values{}); r.header.Get("Location") != "/p/dinner/removed" || !strings.Contains(e.follow(r).body, T("en", "removed.text")) {
 		t.Fatalf("remove: %d", r.status)
 	}
-	if ms := e.mailsTo("admin@example.com"); e.get(l).status != 404 || !strings.Contains(ms[len(ms)-1].Subject, "removed") {
-		t.Fatal("removed link still works or admin not notified")
+	if e.get(l).status != 404 {
+		t.Fatal("removed link still works")
 	}
 
 	l2 := e.answer("dinner", "Ben", "ben@example.com", 1)
-	e.adminPost("/a/p/dinner/remove", url.Values{"token": {e.poll("dinner").Answers[0].Token}})
+	e.post(e.manage("dinner")+"/remove", url.Values{"token": {e.poll("dinner").Answers[0].Token}})
 	if e.get(l2).status != 404 {
 		t.Fatal("admin-removed link still works")
 	}
@@ -609,12 +607,34 @@ func TestAnsweringWithoutEmail(t *testing.T) {
 	if p := e.poll("dinner"); len(p.Answers) != 2 || !strings.Contains(r.body, html.EscapeString(T("en", "sent.text.nomail"))) || !strings.Contains(r.body, "/p/dinner/a/"+p.Answers[0].Token) {
 		t.Fatal("answers without email must count, never as duplicates, and show the personal link")
 	}
-	if e.mailCount() != 2 || len(e.mailsTo("admin@example.com")) != 2 || !strings.Contains(e.mailsTo("admin@example.com")[0].Text, "–") {
-		t.Fatal("only the admin gets mail")
+	if e.mailCount() != 2 || len(e.mailsTo("owner@example.com")) != 2 {
+		t.Fatal("only the creator gets mail (one notification per answer)")
 	}
-	e.adminPost("/a/p/dinner/close", url.Values{"option": {"1"}})
+	e.post(e.manage("dinner")+"/close", url.Values{"option": {"1"}})
 	if !e.poll("dinner").Closed || e.mailCount() != 2 {
 		t.Fatal("closing must not mail participants without email")
+	}
+}
+
+func TestCreatingWithoutEmail(t *testing.T) {
+	e := newEnv(t)
+	f := url.Values{"title": {"T"}, "options": {opts}, "name": {"Owner"}, "pow": {e.srv.pow.issue()}, "nonce": {"0"}}
+	r := e.adminPost("/new", f)
+	if r.status != http.StatusSeeOther || e.mailCount() != 0 {
+		t.Fatalf("creating without email must work and send nothing: %d", r.status)
+	}
+	p := e.poll(createdID(r))
+	if b := e.follow(r).body; !strings.Contains(b, html.EscapeString(T("en", "created.text.nomail"))) || !strings.Contains(b, "/p/"+p.Slug+"/m/"+p.OwnerToken) {
+		t.Fatal("the created page must explain that only the shown link manages the poll")
+	}
+	e.submit(p.Slug, "Anna", "", 0)
+	if e.mailCount() != 0 {
+		t.Fatal("no notifications without an owner email")
+	}
+	f.Set("email", "nope")
+	f.Set("pow", e.srv.pow.issue())
+	if e.adminPost("/new", f).status != http.StatusBadRequest {
+		t.Fatal("an invalid email must still be rejected")
 	}
 }
 
@@ -626,10 +646,10 @@ func TestClose(t *testing.T) {
 	l := e.answer("dinner", "Anna", "anna@example.com", 0, 3)
 	e.answer("dinner", "Ben", "ben@example.com", 2)
 	before := e.mailCount()
-	if e.adminGet("/a/p/dinner/close?option=0").status != 200 || e.poll("dinner").Closed || e.mailCount() != before {
+	if e.get(e.manage("dinner")+"/close?option=0").status != 200 || e.poll("dinner").Closed || e.mailCount() != before {
 		t.Fatal("GET close must only show a confirmation")
 	}
-	e.adminPost("/a/p/dinner/close", url.Values{"option": {"0"}})
+	e.post(e.manage("dinner")+"/close", url.Values{"option": {"0"}})
 
 	for _, addr := range []string{"anna@example.com", "ben@example.com"} {
 		ms := e.mailsTo(addr)
@@ -648,17 +668,17 @@ func TestClose(t *testing.T) {
 		t.Fatal("outcome not shown or form still there")
 	}
 
-	if r := e.adminGet("/a/p/dinner"); !strings.Contains(r.body, "/a/p/dinner/reopen") {
+	if r := e.get(e.manage("dinner")); !strings.Contains(r.body, e.manage("dinner")+"/reopen") {
 		t.Fatal("re-open button missing")
 	}
 	mails := e.mailCount()
-	if r := e.adminPost("/a/p/dinner/reopen", nil); r.header.Get("Location") != "/a/p/dinner?ok=reopened" || e.poll("dinner").Closed || e.mailCount() != mails {
+	if r := e.post(e.manage("dinner")+"/reopen", nil); r.header.Get("Location") != e.manage("dinner")+"?ok=reopened" || e.poll("dinner").Closed || e.mailCount() != mails {
 		t.Fatalf("reopen: %d %s", r.status, r.header.Get("Location"))
 	}
-	if e.submit("dinner", "Late", "late@example.com", 0).status != 200 || strings.Contains(e.adminGet("/a/p/dinner").body, "/reopen") {
+	if e.submit("dinner", "Late", "late@example.com", 0).status != 200 || strings.Contains(e.get(e.manage("dinner")).body, "/reopen") {
 		t.Fatal("a re-opened poll takes answers and has no re-open button")
 	}
-	if e.adminPost("/a/p/dinner/close", url.Values{"option": {"1"}}); !e.poll("dinner").Closed || e.poll("dinner").Outcome != 1 {
+	if e.post(e.manage("dinner")+"/close", url.Values{"option": {"1"}}); !e.poll("dinner").Closed || e.poll("dinner").Outcome != 1 {
 		t.Fatal("close after re-open")
 	}
 
@@ -669,7 +689,7 @@ func TestClose(t *testing.T) {
 		e.createPoll("x", opts+"\nParty am 24.10. um 19.30 Uhr", true, false)
 		e.srv.store.update("x", "test", func(p *Poll) error { p.Options[3] = Option{Text: p.Options[3].Text}; return nil })
 		e.answer("x", "Anna", "anna@example.com", 2, 3)
-		e.adminPost("/a/p/x/close", url.Values{"option": {c.option}})
+		e.post(e.manage("x")+"/close", url.Values{"option": {c.option}})
 		ms := e.mailsTo("anna@example.com")
 		if m := ms[len(ms)-1]; (c.dtstart == "") != (m.ICS == nil) || !bytes.Contains(m.ICS, []byte(c.dtstart)) {
 			t.Fatalf("option %s: ICS %s", c.option, m.ICS)
@@ -679,7 +699,7 @@ func TestClose(t *testing.T) {
 
 func TestAdmin(t *testing.T) {
 	e := newEnv(t)
-	for _, p := range []string{"/a", "/a/new", "/a/p/x"} {
+	for _, p := range []string{"/a", "/new"} {
 		if e.get(p).status != 401 {
 			t.Fatalf("%s without auth", p)
 		}
@@ -688,45 +708,46 @@ func TestAdmin(t *testing.T) {
 		t.Fatal("wrong password accepted")
 	}
 	e.createPoll("dinner", opts, false, false)
-	if r := e.adminGet("/a"); !strings.Contains(r.body, "/a/p/dinner") {
+	if r := e.adminGet("/a"); !strings.Contains(r.body, `href="`+e.manage("dinner")+`"`) {
 		t.Fatal("index misses poll")
 	}
-	if !strings.Contains(e.adminGet("/a/p/dinner").body, `class="home" href="/a"`) || strings.Contains(e.get("/p/dinner").body, `class="home"`) {
-		t.Fatal("logo links to the dashboard on admin pages (no start page here)")
+	if strings.Contains(e.get(e.manage("dinner")).body, `class="home logo"`) || strings.Contains(e.get("/p/dinner").body, `class="home logo"`) {
+		t.Fatal("without a start page the logo links nowhere")
 	}
 
-	r := e.adminGet("/a/p/dinner")
+	r := e.get(e.manage("dinner"))
 	for _, want := range []string{`value="Team Dinner Ü"`, "Pizza</textarea>", `value="single" checked`} {
 		if !strings.Contains(r.body, want) {
 			t.Fatalf("edit form misses %q", want)
 		}
 	}
 
-	r = e.adminPost("/a/p/dinner/edit", url.Values{"title": {""}, "description": {"kept"}, "options": {"A"}})
+	r = e.post(e.manage("dinner")+"/edit", url.Values{"title": {""}, "description": {"kept"}, "options": {"A"}})
 	if r.status != 400 || !strings.Contains(r.body, ">kept</textarea>") || e.poll("dinner").Title != "Team Dinner Ü" {
 		t.Fatalf("invalid edit: %d", r.status)
 	}
 
-	e.adminPost("/a/p/dinner/edit", url.Values{"title": {"New"}, "options": {"A\nB"}, "mode": {"multiple"}, "results": {"1"}})
+	e.post(e.manage("dinner")+"/edit", url.Values{"title": {"New"}, "options": {"A\nB"}, "mode": {"multiple"}, "results": {"1"}})
 	if p := e.poll("dinner"); p.Title != "New" || len(p.Options) != 2 || !p.Multiple || !p.ResultsVisible {
 		t.Fatal("edit failed")
 	}
-	if r := e.do("POST", "/a/p/dinner/edit", url.Values{"title": {""}}, true, "X-Autosave", "1"); r.status != 400 || strings.TrimSpace(r.body) != T("en", "err.title") {
+	if r := e.do("POST", e.manage("dinner")+"/edit", url.Values{"title": {""}}, false, "X-Autosave", "1"); r.status != 400 || strings.TrimSpace(r.body) != T("en", "err.title") {
 		t.Fatalf("autosave error: %d %q", r.status, r.body)
 	}
 
 	l := e.answer("dinner", "Anna", "anna@example.com", 0)
-	if e.adminPost("/a/p/dinner/edit", url.Values{"title": {"New"}, "options": {"X\nY\nZ"}}).status != 409 || len(e.poll("dinner").Options) != 2 {
+	if e.post(e.manage("dinner")+"/edit", url.Values{"title": {"New"}, "options": {"X\nY\nZ"}}).status != 409 || len(e.poll("dinner").Options) != 2 {
 		t.Fatal("options changed despite an answer")
 	}
-	if r := e.do("POST", "/a/p/dinner/edit", url.Values{"title": {"Renamed"}}, true, "X-Autosave", "1"); r.status != 204 || e.poll("dinner").Title != "Renamed" || e.poll("dinner").ResultsVisible {
+	if r := e.do("POST", e.manage("dinner")+"/edit", url.Values{"title": {"Renamed"}}, false, "X-Autosave", "1"); r.status != 204 || e.poll("dinner").Title != "Renamed" || e.poll("dinner").ResultsVisible {
 		t.Fatalf("autosave: %d", r.status)
 	}
 
-	if e.adminGet("/a/p/dinner/delete").status != 200 || e.adminPost("/a/p/dinner/delete", url.Values{}).status != 303 {
+	m := e.manage("dinner")
+	if e.get(m+"/delete").status != 200 || !strings.Contains(e.post(m+"/delete", url.Values{}).body, T("en", "notice.deleted")) {
 		t.Fatal("delete")
 	}
-	if _, err := e.srv.store.get("dinner"); err != errNotFound || e.get(l).status != 404 || e.adminPost("/a/p/dinner/delete", url.Values{}).status != 404 {
+	if _, err := e.srv.store.get("dinner"); err != errNotFound || e.get(l).status != 404 || e.post(m+"/delete", url.Values{}).status != 404 {
 		t.Fatal("poll or participant link survives deletion")
 	}
 }
@@ -742,21 +763,17 @@ func TestThemes(t *testing.T) {
 	}
 
 	e = newEnv(t)
-	if !strings.Contains(e.get("/p/x").body, `<svg xmlns="http://www.w3.org/2000/svg" class="logo"`) {
-		t.Fatal("the logo must be inlined")
-	}
-
-	if r := e.adminGet("/a/new?theme=fun"); !strings.Contains(r.body, `href="/theme.css?theme=fun"`) || !strings.Contains(r.body, `<option value="fun" selected>`) {
+	if r := e.adminGet("/new?theme=fun"); !strings.Contains(r.body, `href="/theme.css?theme=fun"`) || !strings.Contains(r.body, `<option value="fun" selected>`) {
 		t.Fatal("preview")
 	}
-	if r := e.adminGet("/a/new").body; !strings.Contains(r, `<option value="minimal" selected>`) || !strings.Contains(r, `value="multiple" checked`) {
+	if r := e.adminGet("/new").body; !strings.Contains(r, `<option value="minimal" selected>`) || !strings.Contains(r, `value="multiple" checked`) {
 		t.Fatal("the instance theme must be preselected")
 	}
-	e.rename(createdID(e.adminPost("/a/new", url.Values{"title": {"T"}, "options": {"A"}, "theme": {"fun"}})), "t")
-	if e.poll("t").Theme != "fun" || !strings.Contains(e.get("/p/t").body, `href="/theme.css?theme=fun"`) || !strings.Contains(e.adminGet("/a/p/t").body, "theme=fun") {
+	e.rename(createdID(e.adminPost("/new", url.Values{"title": {"T"}, "options": {"A"}, "theme": {"fun"}, "name": {"O"}, "email": {"o@example.com"}, "pow": {e.srv.pow.issue()}, "nonce": {"0"}})), "t")
+	if e.poll("t").Theme != "fun" || !strings.Contains(e.get("/p/t").body, `href="/theme.css?theme=fun"`) || !strings.Contains(e.get(e.manage("t")).body, "theme=fun") {
 		t.Fatal("poll theme not stored or not used")
 	}
-	e.adminPost("/a/p/t/edit", url.Values{"title": {"T"}, "theme": {"bogus"}})
+	e.post(e.manage("t")+"/edit", url.Values{"title": {"T"}, "theme": {"bogus"}})
 	if e.poll("t").Theme != "" {
 		t.Fatal("unknown theme must fall back to the default")
 	}

@@ -4,23 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>{{.Title}} · nobloat/poll</title>
+<title>{{.Title}} · ][/poll</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/theme.css{{with .Theme}}?theme={{.}}{{end}}" data-theme-css>
 <script type="module" src="/static/app.js"></script>
 </head>
 <body>
-<header class="top">
-  {{with .Home}}<a class="home" href="{{.}}">{{end}}{{logo}}{{if .Home}}</a>{{end}}
-</header>
 <main>
 {{template "content" .}}
 </main>
 <footer class="foot">
-  {{t .Lang "footer.by"}} <a href="https://spiessknafl.at/peter" rel="noopener">cinemast</a> ·
+  {{with .Home}}<a class="home logo" href="{{.}}"><b>][</b>/poll</a>{{else}}<span class="logo"><b>][</b>/poll</span>{{end}}
+  <p>{{t .Lang "footer.by"}} <a href="https://spiessknafl.at/peter" rel="noopener">cinemast</a> ·
   <a href="https://zeitkapsl.eu" rel="noopener">zeitkapsl.eu</a> ·
   <a href="https://hardcode.at" rel="noopener">hardcode.at</a> ·
-  <a href="https://nobloat.org" rel="noopener">nobloat.org</a>
+  <a href="https://nobloat.org" rel="noopener">nobloat.org</a>{{with version}} · {{.}}{{end}}</p>
 </footer>
 </body>
 </html>{{end}}
@@ -96,7 +94,7 @@
     <legend>{{t .Lang "new.creator"}}</legend>
     <div class="fields">
       <label>{{t .Lang "poll.name"}}<input name="name" data-key="n" required maxlength="100" autocomplete="name" value="{{.Form.Get "name"}}"></label>
-      <label>{{t .Lang "poll.email"}}<input name="email" type="email" data-key="e" required maxlength="254" autocomplete="email" value="{{.Form.Get "email"}}"></label>
+      <label>{{t .Lang "poll.email.optional"}}<input name="email" type="email" data-key="e" maxlength="254" autocomplete="email" value="{{.Form.Get "email"}}"></label>
     </div>
     <p class="hint">{{t .Lang "new.creator.hint"}}</p>
   </fieldset>

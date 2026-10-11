@@ -1,7 +1,5 @@
-/* elegant: serif type on ivory, deep navy ink, a touch of gold. Hairlines, soft depth,
-   outlined small-caps buttons with wide letter spacing. */
 :root {
-  --font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Charter, Georgia, serif;
+  --font: ui-serif, serif;
   --accent: #b08d3c;
   --bg: light-dark(#f7f3ea, #161a24);
   --fg: light-dark(#1d2433, #ece6d8);
@@ -30,9 +28,8 @@
   --btn-weight: 600;
 }
 
-/* Beyond variables: a theme file is plain CSS appended after app.css, so it can refine rules too. */
 :root { font-size: 17px; line-height: 1.7; }
-.top, main, .foot { max-width: 42rem; }
+main, .foot { max-width: 46rem; }
 main { gap: 4.25rem; }
 
 h1 { font-weight: 400; letter-spacing: -.01em; font-size: clamp(2rem, 6vw, 2.9rem); }

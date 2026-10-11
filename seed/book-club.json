@@ -18,5 +18,9 @@
   "closed": false,
   "outcome": 0,
   "created": "2026-10-08T23:50:43.090942897+02:00",
+  "owner_name": "Bookworm",
+  "owner_email": "books@example.org",
+  "owner_lang": "en",
+  "owner_token": "OOWSINOIW6TKJEDSZRUE5HLQAC",
   "theme": "elegant"
 }

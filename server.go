@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -37,7 +38,6 @@ var (
 type config struct {
 	BaseURL       string
 	AdminPassword string
-	AdminEmail    string
 	Loc           *time.Location
 	Difficulty    int
 	PublicCreate  bool
@@ -68,11 +68,11 @@ func newServer(cfg config, now func() time.Time, send func(Mail) error) (*server
 	}
 	s := &server{cfg: cfg, store: st, pow: newPow(cfg.Difficulty, now), now: now, send: send, pages: map[string]*template.Template{}}
 	funcs := template.FuncMap{
-		"t":    T,
-		"in":   func(v url.Values, k, s string) bool { return slices.Contains(v[k], s) },
-		"inc":  func(i int) int { return i + 1 },
-		"list": func(s ...string) []string { return s },
-		"logo": func() template.HTML { return template.HTML(logo) },
+		"t":       T,
+		"in":      func(v url.Values, k, s string) bool { return slices.Contains(v[k], s) },
+		"inc":     func(i int) int { return i + 1 },
+		"list":    func(s ...string) []string { return s },
+		"version": version,
 	}
 	files, _ := fs.Glob(assets, "templates/*.html")
 	for _, f := range files {
@@ -100,10 +100,13 @@ func (s *server) handler() http.Handler {
 		}
 		http.Redirect(w, r, "/a", http.StatusSeeOther)
 	})
+	admin := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
+	create := admin
 	if s.cfg.PublicCreate {
-		mux.HandleFunc("GET /new", s.publicNew)
-		mux.HandleFunc("POST /new", s.publicCreate)
+		create = func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, h) }
 	}
+	create("GET /new", s.newPoll)
+	create("POST /new", s.createPoll)
 	mux.HandleFunc("GET /p/{slug}", s.pollPage)
 	mux.HandleFunc("POST /p/{slug}", s.submit)
 	mux.HandleFunc("GET /p/{slug}/a/{token}", s.answerPage)
@@ -113,10 +116,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /p/{slug}/a/{token}/update", s.updateAnswer)
 	mux.HandleFunc("GET /p/{slug}/a/{token}/remove", s.removeConfirm)
 	mux.HandleFunc("POST /p/{slug}/a/{token}/remove", s.removeAnswer)
-	admin := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	admin("GET /a", s.adminIndex)
-	admin("GET /a/new", s.adminNew)
-	admin("POST /a/new", s.adminCreate)
 	s.manageRoutes(mux)
 	return s.headers(http.NewCrossOriginProtection().Handler(mux))
 }
@@ -142,7 +142,7 @@ func (s *server) auth(next http.Handler) http.Handler {
 		u, p, ok := r.BasicAuth()
 		got := sha256.Sum256([]byte(u + "\x00" + p))
 		if !ok || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="nobloat/poll", charset="UTF-8"`)
+			w.Header().Set("WWW-Authenticate", `Basic realm="][/poll", charset="UTF-8"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -166,8 +166,22 @@ func (s *server) themeFor(name string) []byte {
 	return s.themes[s.cfg.Theme]
 }
 
-//go:embed static/logo.svg
-var logo []byte
+var version = sync.OnceValue(func() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	v, _, _ := strings.Cut(bi.Main.Version, "+")
+	if v == "" || v == "(devel)" || strings.Contains(v, "-") {
+		v = "dev"
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+			v += " (" + s.Value[:7] + ")"
+		}
+	}
+	return v
+})
 
 func (s *server) theme(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -211,7 +225,6 @@ func results(p *Poll) []result {
 
 type page struct {
 	Lang       string
-	Admin      bool
 	Home       string
 	Base       string
 	Public     bool
@@ -254,11 +267,7 @@ func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name
 	if p.Form != nil && p.Form.Get("theme") == "" {
 		p.Form.Set("theme", s.cfg.Theme)
 	}
-	p.Admin = r.URL.Path == "/a" || strings.HasPrefix(r.URL.Path, "/a/")
-	switch {
-	case p.Admin:
-		p.Home = "/a"
-	case s.cfg.PublicCreate:
+	if s.cfg.PublicCreate {
 		p.Home = "/"
 	}
 	p.BaseURL = s.cfg.BaseURL
@@ -348,17 +357,13 @@ func (s *server) mailLink(p *Poll, a *Answer) error {
 	return s.mail(a.Email, "link", T(a.Lang, "mail.link.subject", p.Title), mailData{Lang: a.Lang, Poll: p, Answer: a, Link: s.answerLink(p, a)}, nil)
 }
 
-func (s *server) mailAdmin(p *Poll, a *Answer, event string) {
+func (s *server) notifyOwner(p *Poll, a *Answer, event string) {
 	var choices []string
 	for _, c := range a.Choices {
 		choices = append(choices, p.Options[c].Text)
 	}
-	to, l, link := s.cfg.AdminEmail, "en", s.cfg.BaseURL+"/a/p/"+p.Slug
-	if p.OwnerToken != "" {
-		to, l, link = p.OwnerEmail, p.OwnerLang, s.ownerLink(p)
-	}
-	s.mail(to, "admin", T(l, "mail.admin.subject."+event, a.Name, p.Title),
-		mailData{Lang: l, Poll: p, Answer: a, Event: event, Choices: choices, Link: link,
+	s.mail(p.OwnerEmail, "admin", T(p.OwnerLang, "mail.admin.subject."+event, a.Name, p.Title),
+		mailData{Lang: p.OwnerLang, Poll: p, Answer: a, Event: event, Choices: choices, Link: s.ownerLink(p),
 			Results: results(p)}, nil)
 }
 
@@ -458,7 +463,7 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mailLink(p, added)
-	s.mailAdmin(p, added, "new")
+	s.notifyOwner(p, added, "new")
 	http.Redirect(w, r, "/p/"+p.Slug+"/a/"+added.Token+"/thanks", http.StatusSeeOther)
 }
 
@@ -541,7 +546,7 @@ func (s *server) updateAnswer(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.mailAdmin(p, a, "changed")
+	s.notifyOwner(p, a, "changed")
 	if autosave(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -573,6 +578,6 @@ func (s *server) removeAnswer(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.mailAdmin(p, a, "removed")
+	s.notifyOwner(p, a, "removed")
 	http.Redirect(w, r, "/p/"+p.Slug+"/removed", http.StatusSeeOther)
 }

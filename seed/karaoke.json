@@ -24,5 +24,9 @@
   "closed": false,
   "outcome": 0,
   "created": "2026-10-08T21:50:43.090942897+02:00",
+  "owner_name": "Freddie",
+  "owner_email": "freddie@example.org",
+  "owner_lang": "en",
+  "owner_token": "TDMRIXJ5JQ4EQHA2EMBTC44NUJ",
   "theme": "fun"
 }
