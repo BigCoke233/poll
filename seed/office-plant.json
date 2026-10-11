@@ -1,20 +1,20 @@
 {
-  "slug": "office-plant",
   "title": "Name the office plant",
-  "description": "It has survived three summers and one intern. It deserves a name.",
+  "description": "It has survived three summers. It deserves a name.",
   "multiple": false,
   "resultsVisible": true,
   "options": [
-    {"text": "Fernando"},
-    {"text": "Leaf Erikson"},
-    {"text": "Planty McPlantface"},
-    {"text": "Groot (obviously)"}
+    {"text": "go fern"},
+    {"text": "/dev/leaf"},
+    {"text": "Monstera monolith"},
+    {"text": "(g)root"},
+    {"text": "Photosynthesis-as-a-Service"}
   ],
   "answers": [
     {"token": "MEQE3D3QYQC4BPZSJ5EGJR3Y4H", "name": "Dana from Accounting", "email": "dana@example.org", "lang": "en", "choices": [1], "created": "2026-10-09T01:15:00+02:00"},
-    {"token": "BGPLII4KUS5P6ARZHDWEHCVBIM", "name": "Ravi", "email": "ravi@example.org", "lang": "en", "choices": [2], "created": "2026-10-09T02:15:00+02:00"},
+    {"token": "BGPLII4KUS5P6ARZHDWEHCVBIM", "name": "Ravi", "email": "ravi@example.org", "lang": "en", "choices": [0], "created": "2026-10-09T02:15:00+02:00"},
     {"token": "NCNYZTM3UMMHESE2NAWQCMHVTJ", "name": "Mia", "email": "mia@example.org", "lang": "en", "choices": [1], "created": "2026-10-09T03:15:00+02:00"},
-    {"token": "B3IODYCAM7JNXOANQXZ43NSBNZ", "name": "The intern", "email": "intern@example.org", "lang": "en", "choices": [3], "created": "2026-10-09T04:15:00+02:00"}
+    {"token": "B3IODYCAM7JNXOANQXZ43NSBNZ", "name": "The intern", "email": "intern@example.org", "lang": "en", "choices": [4], "created": "2026-10-09T04:15:00+02:00"}
   ],
   "closed": false,
   "outcome": 0,

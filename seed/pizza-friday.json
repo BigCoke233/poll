@@ -1,14 +1,13 @@
 {
-  "slug": "pizza-friday",
   "title": "Pizza Friday",
-  "description": "The most important decision of the week.\nPineapple discussions will be moderated.",
+  "description": "The most important decision of the week.",
   "multiple": true,
   "resultsVisible": true,
   "options": [
-    {"text": "Margherita (the classic)"},
-    {"text": "Diavola (for the brave)"},
-    {"text": "Quattro Formaggi (all of them)"},
-    {"text": "Hawaii (we need to talk)"}
+    {"text": "Margherita"},
+    {"text": "Diavola"},
+    {"text": "Quattro Formaggi"},
+    {"text": "Hawaii"}
   ],
   "answers": [
     {"token": "H3DKISIPOMEX4H4373PJKU2FTC", "name": "Ada Lovelace", "email": "ada@example.org", "lang": "en", "choices": [0, 2], "created": "2026-10-09T00:50:43.090942897+02:00"},

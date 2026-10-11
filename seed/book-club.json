@@ -1,19 +1,22 @@
 {
-  "slug": "book-club",
-  "title": "Book club: what do we read next?",
-  "description": "One book per month. Whoever picks it brings the tea.",
+  "title": "Book club: less, but better",
+  "description": "One book per month about software, the web and doing more with less. Whoever picks it explains why it isn't bloated.",
   "multiple": false,
   "resultsVisible": true,
   "options": [
-    {"text": "The Hitchhiker's Guide to the Galaxy"},
-    {"text": "Dune (all 600 pages)"},
-    {"text": "A cookbook, for once"}
+    {"text": "Enshittification – Cory Doctorow"},
+    {"text": "A Philosophy of Software Design – John Ousterhout"},
+    {"text": "The Go Programming Language – Alan Donovan & Brian Kernighan"},
+    {"text": "The Mythical Man-Month – Fred Brooks"},
+    {"text": "Digital Minimalism – Cal Newport"},
+    {"text": "The Age of Surveillance Capitalism – Shoshana Zuboff"},
+    {"text": "Small Is Beautiful – E. F. Schumacher"}
   ],
   "answers": [
-    {"token": "GWRM72W37ETOZGM3JILER3WMLC", "name": "Douglas", "email": "douglas@example.org", "lang": "en", "choices": [0], "created": "2026-10-09T00:50:43.090942897+02:00"},
-    {"token": "NSZEQV4HTHH3TITSEAS3XWKB4C", "name": "Frank", "email": "frank@example.org", "lang": "en", "choices": [1], "created": "2026-10-09T00:50:43.090942897+02:00"},
-    {"token": "NB4QAW57PBSNB4N3BQ4MUO3IPP", "name": "Julia", "email": "julia@example.org", "lang": "en", "choices": [2], "created": "2026-10-09T00:50:43.090942897+02:00"},
-    {"token": "LZVFQ72FHYWJO527QZSHMDPJGG", "name": "Arthur Dent", "email": "arthur@example.org", "lang": "en", "choices": [0], "created": "2026-10-09T00:50:43.090942897+02:00"}
+    {"token": "GWRM72W37ETOZGM3JILER3WMLC", "name": "Ken", "email": "ken@example.org", "lang": "en", "choices": [0], "created": "2026-10-09T00:50:43.090942897+02:00"},
+    {"token": "NSZEQV4HTHH3TITSEAS3XWKB4C", "name": "Rob", "email": "rob@example.org", "lang": "en", "choices": [1], "created": "2026-10-09T00:50:43.090942897+02:00"},
+    {"token": "NB4QAW57PBSNB4N3BQ4MUO3IPP", "name": "Grace", "email": "grace@example.org", "lang": "en", "choices": [3], "created": "2026-10-09T00:50:43.090942897+02:00"},
+    {"token": "LZVFQ72FHYWJO527QZSHMDPJGG", "name": "Ada", "email": "ada@example.org", "lang": "en", "choices": [0], "created": "2026-10-09T00:50:43.090942897+02:00"}
   ],
   "closed": false,
   "outcome": 0,
